@@ -7,6 +7,13 @@ spring:
     username: ${DB_USER:postgres}
     # No fallback, like JWT_SECRET: a default here is a password published in the repo (§8.10 #14).
     password: ${DB_PASSWORD}
+    hikari:
+      # The pooler drops a connection now and then, and one drop at startup used to end the app for good.
+      initialization-fail-timeout: 60000
+      # The free pooler allows 60 connections for the whole project, and a 512 MB instance cannot use ten.
+      maximum-pool-size: 5
+      # The pooler closes idle connections without notice; probing keeps a request from meeting a dead one.
+      keepalive-time: 120000
   jpa:
     hibernate:
       # The schema is owned by Flyway (CLAUDE.md 4.1) - never let Hibernate write it.
@@ -23,6 +30,9 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+    # A dropped first connection to the pooler is retried for about a minute instead of failing the boot.
+    connect-retries: 10
+    connect-retries-interval: 5s
   servlet:
     multipart:
       # Boot defaults to 1MB, which rejects an A3 scan of the gia pha long before MediaServiceImpl's
