@@ -11,6 +11,8 @@ Ghi lại người trong họ, quan hệ, sự kiện, ảnh và bản scan gia 
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
 
+🔗 **Trang web:** [tocnguyenvinhhathanh.vercel.app](https://tocnguyenvinhhathanh.vercel.app)
+
 </div>
 
 ---
@@ -121,7 +123,7 @@ Backend → Cloudinary (ảnh)
 | Dịch vụ | Việc đảm nhận | Ghi chú |
 |---|---|---|
 | **Render** | Backend, Docker, gói Free | Tắt Auto-Deploy; deploy qua Deploy Hook |
-| **Vercel** | Frontend, thư mục gốc `frontend` | `vercel.json` chuyển `/api/*` sang Render để trình duyệt chỉ thấy một origin |
+| **Vercel** | Frontend tại https://tocnguyenvinhhathanh.vercel.app, thư mục gốc `frontend` | `vercel.json` chuyển `/api/*` sang Render để trình duyệt chỉ thấy một origin |
 | **Supabase** | PostgreSQL | Dùng **Session pooler**; tắt Data API |
 | **Cloudinary** | Lưu ảnh | `STORAGE_PROVIDER=cloudinary` |
 
@@ -142,7 +144,7 @@ Backend → Cloudinary (ảnh)
 | `STORAGE_PROVIDER` | `cloudinary` |
 | `MEDIA_BUCKET` | thư mục trên Cloudinary, mặc định `genealogy-media` |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | từ Cloudinary |
-| `CORS_ORIGINS` | địa chỉ Vercel, ví dụ `https://<tên>.vercel.app` |
+| `CORS_ORIGINS` | địa chỉ Vercel, `https://tocnguyenvinhhathanh.vercel.app` |
 | `SERVER_FORWARD_HEADERS_STRATEGY` | `native`, để giới hạn đăng nhập sai tính theo từng người thay vì theo proxy |
 | `JAVA_TOOL_OPTIONS` | `-Xmx300m`, vì gói Free của Render chỉ có 512 MB |
 
