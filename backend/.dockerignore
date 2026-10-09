@@ -1,0 +1,6 @@
+# Only pom.xml and src are copied; everything else would only slow the build context down.
+target/
+.idea/
+.vscode/
+*.iml
+*.log

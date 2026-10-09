@@ -1,0 +1,8 @@
+FROM node:24-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci && sha1sum package-lock.json > node_modules/.lock-sha
+COPY . .
+EXPOSE 5173
+# node_modules is a volume that outlives the image, so it is reinstalled whenever the lockfile no longer matches it.
+CMD ["sh", "-c", "sha1sum -c -s node_modules/.lock-sha 2>/dev/null || (npm ci && sha1sum package-lock.json > node_modules/.lock-sha); exec npm run dev -- --host"]

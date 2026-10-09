@@ -1,0 +1,123 @@
+services:
+  postgres:
+    # NOT `18-alpine`: that tag ships a 0-byte /etc/passwd, so the entrypoint dies with
+    # `find: unknown user postgres`. Verified on 2026-09-14; 16-alpine and 17-alpine are fine.
+    image: postgres:18
+    container_name: genealogy_postgres
+    environment:
+      POSTGRES_DB: genealogy
+      POSTGRES_USER: postgres
+      # No default: a well-known password on a published port handed the whole clan to the café Wi-Fi.
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    ports:
+      # Loopback only: the backend reaches it over the compose network, nothing else needs it (§8.10 #14).
+      # Host port 5433 by default: a Postgres installed on Windows holds 5432 on this dev box.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      # PG18 moved PGDATA to /var/lib/postgresql/18/docker and declares the VOLUME one level up;
+      # mounting the old /var/lib/postgresql/data path silently loses the data on `compose down`.
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d genealogy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Local object storage for development and tests. Production uses Cloudinary
+  # (CLAUDE.md §2) — nothing writes here until the `media` feature lands in P3.
+  minio:
+    # MinIO removed its images from Docker Hub; quay.io is the only registry still serving them.
+    # Pinned by digest, and NOT to a RELEASE/hotfix tag: those images fail with
+    # `exec format error` on linux/amd64 (verified 2026-09-14). This digest is the working one.
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    container_name: genealogy_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      # Host-side ports are 9100/9101 by default: 9000 is a common collision on a dev box
+      # (an IDE-run app was holding it here). The container ports stay 9000/9001, so
+      # MINIO_ENDPOINT inside the compose network is unaffected. Loopback only, like postgres:
+      # the browser that opens a signed URL runs on this machine.
+      - "127.0.0.1:${MINIO_API_PORT:-9100}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9101}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: genealogy_backend
+    environment:
+      # Point at the compose service names, not localhost.
+      DB_URL: jdbc:postgresql://postgres:5432/genealogy
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      # Both loopback spellings: opened at 127.0.0.1, the app's every call was refused by CORS (§8.11 #17).
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      # On for development only, and only on loopback below; production leaves it unset, which is off.
+      API_DOCS_ENABLED: "true"
+      # Required, like the passwords: the app refuses a short or placeholder secret at startup anyway.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # Storage — `minio` locally, `cloudinary` in production (CLAUDE.md §2).
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-minio}
+      MINIO_ENDPOINT: http://minio:9000
+      # Where a browser reaches MinIO, which is not where the backend does: a signed URL covers the
+      # host it was signed for, so signing with minio:9000 produces a link no browser can open.
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:${MINIO_API_PORT:-9100}}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      MEDIA_BUCKET: ${MEDIA_BUCKET:-genealogy-media}
+      # Passed through so STORAGE_PROVIDER=cloudinary can actually be tried; blank locally.
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+    ports:
+      # Host port is overridable: 8080 is a very common collision on a dev box.
+      # The container port stays 8080, so the frontend's in-network proxy is unaffected.
+      # Loopback only: with Swagger on, the whole API contract was open to the café Wi-Fi (§8.11 #17).
+      - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      # The JRE image has no curl or wget; bash's /dev/tcp asks the public health endpoint instead.
+      test: ["CMD", "bash", "-c",
+             "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: genealogy_frontend
+    environment:
+      # Vite dev server proxies /api to the backend container; polling makes
+      # HMR work over the bind mount on Windows/macOS.
+      VITE_PROXY_TARGET: http://backend:8080
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      # Loopback only, like the backend: the dev server answers anyone who can reach it.
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      # Named, and refreshed by Dockerfile.dev whenever package-lock.json changes: the anonymous one drifted.
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  minio_data:
+  frontend_node_modules:
