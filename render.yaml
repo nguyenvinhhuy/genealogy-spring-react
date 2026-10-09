@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: genealogy-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: singapore
+    healthCheckPath: /actuator/health
+    autoDeploy: false # deploys are triggered by the GitHub Actions "Deploy" workflow instead
+    envVars:
+      - key: STORAGE_PROVIDER
+        value: cloudinary
+      - key: MEDIA_BUCKET
+        value: genealogy-media
+      - key: SERVER_FORWARD_HEADERS_STRATEGY
+        value: native
+      - key: JAVA_TOOL_OPTIONS
+        value: -Xmx300m
+      - key: DB_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
