@@ -41,7 +41,7 @@ Ghi lại người trong họ, quan hệ, sự kiện, ảnh và bản scan gia 
 |---|---|
 | Backend | Java 26, Spring Boot 4.1, Maven, Spring Security + JWT |
 | Cơ sở dữ liệu | PostgreSQL 18 (`unaccent`, `pg_trgm`), Flyway |
-| Lưu ảnh | MinIO khi phát triển, Cloudinary khi chạy thật |
+| Lưu ảnh | Cloudinary (cả khi phát triển) |
 | Frontend | React 19, TypeScript, Vite, TailwindCSS 4, shadcn/ui |
 | Dữ liệu & form | TanStack Query, React Hook Form + Zod, Zustand |
 | Vẽ cây | d3-hierarchy + d3-zoom trên SVG |
@@ -56,7 +56,7 @@ genealogy-spring-react/
 ├── backend/               # Spring Boot, package-by-feature (com.genealogy.*)
 ├── frontend/              # React + Vite, feature-sliced (src/features/*)
 ├── docs/analysis.md       # phân tích nghiệp vụ và lộ trình
-├── docker-compose.yml     # PostgreSQL, MinIO, backend, frontend cho máy dev
+├── docker-compose.yml     # PostgreSQL, backend, frontend cho máy dev
 ├── render.yaml            # dịch vụ backend trên Render
 └── .github/workflows/     # CI và deploy
 ```
@@ -75,7 +75,7 @@ Mở `.env` và điền các giá trị bắt buộc:
 |---|---|
 | `DB_PASSWORD` | tự đặt |
 | `JWT_SECRET` | `openssl rand -base64 48` |
-| `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` | tự đặt |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | tài khoản miễn phí ở cloudinary.com; để trống thì tải ảnh lên sẽ báo lỗi, phần còn lại vẫn chạy |
 
 Sau đó:
 
@@ -86,7 +86,7 @@ docker compose up -d
 Hoặc chạy từng phần khi phát triển:
 
 ```bash
-docker compose up -d postgres minio
+docker compose up -d postgres
 cd backend && mvn spring-boot:run
 cd frontend && npm install && npm run dev
 ```
@@ -96,7 +96,6 @@ cd frontend && npm install && npm run dev
 | Giao diện | http://localhost:5173 |
 | API | http://localhost:8080/api/v1 |
 | Swagger UI | http://localhost:8080/swagger-ui.html |
-| MinIO console | http://localhost:9101 |
 
 Tài khoản ADMIN có sẵn: `admin@genealogy.vn` / `Admin@123`. **Hãy đổi mật khẩu ngay** sau lần đăng nhập đầu.
 
@@ -125,7 +124,7 @@ Backend → Cloudinary (ảnh)
 | **Render** | Backend, Docker, gói Free | Tắt Auto-Deploy; deploy qua Deploy Hook |
 | **Vercel** | Frontend tại https://tocnguyenvinhhathanh.vercel.app, thư mục gốc `frontend` | `vercel.json` chuyển `/api/*` sang Render để trình duyệt chỉ thấy một origin |
 | **Supabase** | PostgreSQL | Dùng **Session pooler**; tắt Data API |
-| **Cloudinary** | Lưu ảnh | `STORAGE_PROVIDER=cloudinary` |
+| **Cloudinary** | Lưu ảnh | Ba biến `CLOUDINARY_*` |
 
 **Secret trên GitHub** (Settings → Secrets and variables → Actions):
 
@@ -141,7 +140,6 @@ Backend → Cloudinary (ảnh)
 | `DB_URL` | `jdbc:postgresql://<host-pooler>:5432/postgres` |
 | `DB_USER`, `DB_PASSWORD` | từ Supabase |
 | `JWT_SECRET` | chuỗi ngẫu nhiên từ 32 byte trở lên; thiếu thì backend không khởi động |
-| `STORAGE_PROVIDER` | `cloudinary` |
 | `MEDIA_BUCKET` | thư mục trên Cloudinary, mặc định `genealogy-media` |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | từ Cloudinary |
 | `CORS_ORIGINS` | địa chỉ Vercel, `https://tocnguyenvinhhathanh.vercel.app` |
@@ -156,7 +154,7 @@ Sao lưu cơ sở dữ liệu:
 docker exec genealogy_postgres pg_dump -U postgres -Fc genealogy > genealogy.dump
 ```
 
-Ảnh nằm ở Cloudinary (hoặc volume `minio_data` khi dev) và cần sao lưu riêng.
+Ảnh nằm ở Cloudinary và không nằm trong bản sao lưu này.
 
 ## API chính
 

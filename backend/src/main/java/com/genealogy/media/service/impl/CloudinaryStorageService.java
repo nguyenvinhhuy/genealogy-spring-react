@@ -15,14 +15,12 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.InputStreamSource;
 import org.springframework.stereotype.Service;
 
-/** {@link StorageService} for production, backed by Cloudinary and its on-the-fly image transforms. */
+/** {@link StorageService} backed by Cloudinary and its on-the-fly image transforms. */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "app.storage.provider", havingValue = "cloudinary")
 public class CloudinaryStorageService implements StorageService {
 
     // Every accepted type, PDF included, is an "image" to Cloudinary; one resource type keeps url and destroy right.
@@ -31,7 +29,7 @@ public class CloudinaryStorageService implements StorageService {
     // The only formats Cloudinary will store, so a file that got past the byte check is still refused there.
     private static final String ALLOWED_FORMATS = "jpg,png,gif,webp,heic,pdf";
 
-    // The long edge of a thumbnail, the same as MinIO's stored copies.
+    // The long edge of a thumbnail: a 320 px tile at twice the pixel density, and a printed portrait.
     private static final int THUMBNAIL_EDGE = 600;
 
     // A CDN read that stalls must fail, or it holds a book render's thread for ever (§8.9 #13).
@@ -119,7 +117,7 @@ public class CloudinaryStorageService implements StorageService {
      */
     @Override
     public String resolveUrl(String storageKey, ImageSize size) {
-        // Unsigned and long-lived, unlike MinIO's: §3.6 is applied before this is ever handed out.
+        // Unsigned and long-lived: §3.6 is applied before this is ever handed out.
         if (size == ImageSize.ORIGINAL) {
             return cloudinary.url().secure(true).resourceType(RESOURCE_TYPE).generate(storageKey);
         }

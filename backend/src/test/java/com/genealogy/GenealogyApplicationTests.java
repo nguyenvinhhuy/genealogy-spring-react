@@ -27,11 +27,7 @@ class GenealogyApplicationTests {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("app.jwt.secret", () -> "test-only-secret-value-at-least-32-bytes-long");
-        // The MinIO client refuses empty credentials, and CI has none in its environment.
-        registry.add("app.storage.minio.access-key", () -> "test-access-key");
-        registry.add("app.storage.minio.secret-key", () -> "test-secret-key");
-    }
+        registry.add("app.jwt.secret", () -> "test-only-secret-value-at-least-32-bytes-long");    }
 
     @Test
     void contextLoads() {

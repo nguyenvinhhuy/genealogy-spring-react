@@ -3,8 +3,8 @@ package com.genealogy.media.service;
 import java.util.Optional;
 import org.springframework.core.io.InputStreamSource;
 
-/** The only door to object storage (CLAUDE.md §3.9): MinIO in dev, Cloudinary in prod. */
-// Narrow on purpose: dev and prod run different implementations, so each method is tested on only one.
+/** The only door to object storage (CLAUDE.md §3.9), which Cloudinary answers. */
+// Narrow on purpose: the smaller this surface, the less of a provider's behaviour leaks into the features.
 public interface StorageService {
 
     /**

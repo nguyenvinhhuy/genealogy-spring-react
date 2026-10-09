@@ -37,7 +37,7 @@ the family tree and reminds the family of upcoming giỗ.
 | JDBC driver | 42.7.13 | Managed by the Boot BOM — do not pin manually |
 | Migrations | **Flyway 13.x** | Version managed by Boot. Use the `spring-boot-flyway` module, not bare `flyway-core` |
 | Auth | Spring Security + **JJWT 0.13.0** | access 15m / refresh 7d |
-| Storage | **MinIO** (dev) / **Cloudinary 2.4.0** (prod) | Behind one `StorageService` interface — see §3.9. Dependency arrives at P3 |
+| Storage | **Cloudinary 2.4.0** | Behind one `StorageService` interface — see §3.9. MinIO was removed on 2026-10-09 |
 | PDF | **iText Core 9.7.1** | Artifact is `com.itextpdf:itext-core` — see the note below |
 | Mapping | **MapStruct 1.6.3** | + `lombok-mapstruct-binding` 0.2.0 |
 | Boilerplate | **Lombok 1.18.48** | |
@@ -237,49 +237,30 @@ must be answerable years later.
   null trips `ck_revisions_has_payload` and would roll the caller's own edit back over a formatting problem.
 - The trail outlives its subject — deleting a person keeps their revisions, including the last known state.
 
-### 3.9 Storage is MinIO in dev, Cloudinary in prod, behind one narrow interface
+### 3.9 Storage is Cloudinary, behind one narrow interface
 
-`docker compose` runs **MinIO**, so development and tests never touch an external service and never upload real
-family photos anywhere. Production uses **Cloudinary**, kept for its on-the-fly image transforms — this app is
-photo-heavy (portraits plus A3 scans of the old gia phả) and hand-rolling a thumbnailer is real work.
+⚠️ **Changed 2026-10-09 at the user's explicit decision** (charity already did the same): MinIO, `MinioStorageService`,
+the `STORAGE_PROVIDER` switch and the `io.minio` / `okhttp-jvm` dependencies are gone. Development and production both
+use **Cloudinary**, so a developer needs the three `CLOUDINARY_*` values in `.env` to upload a photo; without them the
+rest of the gia phả runs and an upload answers 503. Family photos therefore leave the machine even in development —
+use a throwaway Cloudinary account, not the clan's, for tests. §8 keeps the history of the MinIO years as it was written.
 
-⚠️ **The bucket is created by the app, not by a `minio-init` container.** MinIO's `mc` image is broken at every
-tag this project could pull (see `docker-compose.yml`), so `MinioStorageService.ensureBucket()` does it on
-startup instead. It is idempotent, and it only warns on failure: the rest of the gia phả works without photos,
-and refusing to boot because object storage is slow to come up would be worse than a failed upload later.
+Photos are kept for Cloudinary's on-the-fly image transforms: this app is photo-heavy (portraits plus A3 scans of the old
+gia phả) and hand-rolling a thumbnailer is real work.
 
-- The two are **not** API-compatible: MinIO speaks S3, Cloudinary does not. So dev exercises a different
-  implementation than production — the standard trap of this setup, accepted deliberately here.
-- The mitigation is a **narrow** `media/service/StorageService` interface: `upload`, `delete`, `resolveUrl` and
-  `download`, nothing more. The smaller that surface, the less untested prod-only behaviour there is. ❌ Do not leak
-  S3-specific or Cloudinary-specific types (presigned URLs, transformation strings, `PutObjectArgs`) through it —
-  those stay inside the implementations.
-- ⚠️ **`download` was added deliberately on 2026-09-18, and only because the alternative was worse.** The book
-  embeds portraits in a PDF and iText needs the **bytes**; the only other route was having the server fetch its own
-  signed URL over HTTP, which walks straight into the host problem two bullets below. MinIO reads through
-  `getObject` on the internal client; Cloudinary fetches its own CDN URL, which needs no signing. Both return
-  `Optional.empty()` on failure and log — a portrait that will not load must not stop the whole book.
-- ⚠️ **A size is a parameter, not a new method** (2026-09-29, §8.9 D3). `upload` takes an `InputStreamSource`
-  and returns a `StoredFile` (the original's key and, when the provider stores one, a thumbnail's);
-  `resolveUrl` and `download` take an `ImageSize` (`THUMBNAIL` | `ORIGINAL`). MinIO makes a 600 px JPEG at upload
-  and stores it beside the original; Cloudinary answers with a transform and stores nothing extra. The size is the
-  only thing that crosses the interface — ❌ no transformation string, no key suffix convention outside the impls.
-- ⚠️ **The type of a stored file is read from its bytes** (`FileTypes`), never from the upload's header or name,
-  and a storage fault is a 503 with a fixed Vietnamese message: the SDK's own text named the internal host.
-- `STORAGE_PROVIDER` (`minio` | `cloudinary`) selects the implementation. Both are `@Service` beans guarded by
-  `@ConditionalOnProperty`.
-- Add **one** integration test against real Cloudinary, skipped via `@EnabledIfEnvironmentVariable` when credentials
-  are absent, so the prod path is not literally never executed.
-- ⚠️ **MinIO needs two clients and an explicit region.** A presigned URL is signed for one host, and the host the
-  backend uses (`minio:9000` inside compose) is not one a browser can resolve — so signing runs through a second
-  client built on `MINIO_PUBLIC_ENDPOINT`. That client must also be given `.region(...)`, or the SDK fetches the
-  bucket location over HTTP first and, from inside the container, that request goes to the container's own
-  localhost and is refused.
-- ⚠️ **`io.minio:minio` needs `com.squareup.okhttp3:okhttp-jvm` declared explicitly.** MinIO depends on `okhttp`,
-  which at OkHttp 5 is an empty Kotlin-multiplatform metadata jar; the JVM classes live in `okhttp-jvm`. Without
-  it, `okhttp3.HttpUrl` is missing at compile time.
-- A signed URL is a **bearer link**: whoever holds it needs no login. So §3.6 is applied before one is ever handed
-  out — `MediaService.findByTarget` returns nothing for a living person to a caller below EDITOR.
+- `media/service/StorageService` stays narrow: `upload`, `delete`, `resolveUrl` and `download`, nothing more. ❌ Do not
+  leak Cloudinary types (transformation strings, `Uploader`) through it — those stay inside the implementation.
+- ⚠️ **`download` exists because the book embeds portraits in a PDF and iText needs the bytes.** Cloudinary fetches its own
+  CDN URL, which needs no signing, and returns `Optional.empty()` on failure and logs — a portrait that will not load
+  must not stop the whole book.
+- ⚠️ **A size is a parameter, not a new method.** `upload` takes an `InputStreamSource` and returns a `StoredFile`;
+  `resolveUrl` and `download` take an `ImageSize` (`THUMBNAIL` | `ORIGINAL`). Only the size crosses the interface.
+- ⚠️ **The type of a stored file is read from its bytes** (`FileTypes`), never from the upload's header or name, and a
+  storage fault is a 503 with a fixed Vietnamese message: the SDK's own text named the internal host.
+- `CloudinaryStorageService` is the one `StorageService` bean. `CloudinaryStorageServiceIT` runs against real Cloudinary
+  and is skipped via `@EnabledIfEnvironmentVariable` when credentials are absent.
+- A Cloudinary URL is **permanent and unsigned**, so §3.6 is applied before one is ever handed out:
+  `MediaService.findByTarget` returns nothing for a living person to a caller below EDITOR.
 
 ---
 

@@ -31,10 +31,8 @@ class CloudinaryStorageServiceIT {
     @DisplayName("an image survives an upload, both URLs answer with bytes, a download reads it, and a delete ends it")
     void roundTripsAgainstCloudinary() throws Exception {
         StorageProperties properties = new StorageProperties(
-                "cloudinary",
                 "genealogy-test",
                 Duration.ofHours(1),
-                null,
                 new StorageProperties.Cloudinary(
                         System.getenv("CLOUDINARY_CLOUD_NAME"),
                         System.getenv("CLOUDINARY_API_KEY"),

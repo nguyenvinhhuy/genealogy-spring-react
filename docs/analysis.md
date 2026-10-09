@@ -204,13 +204,12 @@ là phần đáng show nhất trong portfolio.
 
 ### 5.2 Lưu trữ ảnh & tài liệu
 
-**Đã chốt (CLAUDE.md §3.9):** **MinIO khi dev**, **Cloudinary khi prod**, sau một interface
-`StorageService` hẹp (`upload` / `delete` / `resolveUrl`). Dev không đụng dịch vụ ngoài và
-không upload ảnh gia đình thật đi đâu cả; prod giữ Cloudinary vì transform/thumbnail tự động —
+**Đã chốt (CLAUDE.md §3.9, đổi ngày 2026-10-09):** **chỉ dùng Cloudinary**, cả khi dev lẫn prod, sau một interface
+`StorageService` hẹp (`upload` / `delete` / `resolveUrl` / `download`). Ban đầu chọn MinIO cho dev, nhưng đã bỏ vì
+giống charity và để dev chạy đúng cùng một implementation với prod. Giữ Cloudinary vì transform/thumbnail tự động —
 app này nặng ảnh (chân dung + scan A3 300dpi) và tự viết bộ resize là việc thật.
 
-Đánh đổi đã chấp nhận: MinIO nói S3, Cloudinary thì không, nên dev chạy impl khác prod. Giảm
-rủi ro bằng interface hẹp + một integration test chạy với credential Cloudinary thật khi có.
+Đánh đổi chấp nhận: ảnh thử khi dev cũng lên Cloudinary, nên dùng tài khoản thử riêng, không dùng tài khoản của họ.
 
 **Còn phải chốt:** có giữ file scan gốc không nén không? Nếu có thì cần đường lưu riêng, vì
 Cloudinary sẽ nén lại ảnh gốc.
@@ -238,8 +237,8 @@ npm / Maven Central ngày 2026-09-14); đừng copy `pom.xml` / `package.json` c
 
 **Backend** — Java 26, Spring Boot 4.1.0 (Jackson 3 `tools.jackson.*`), Maven, PostgreSQL 18 +
 Flyway (`spring-boot-flyway`), Spring Security + JJWT 0.13.0 (access 15m / refresh 7d HttpOnly
-cookie), MapStruct 1.6.3, Lombok 1.18.48, springdoc-openapi 3.1.1, MinIO (dev) /
-Cloudinary 2.4.0 (prod),
+cookie), MapStruct 1.6.3, Lombok 1.18.48, springdoc-openapi 3.1.1,
+Cloudinary 2.4.0,
 iText Core 9.7.1, Testcontainers 2.0.5.
 
 **Frontend** — React 19.3 + TypeScript 6.0.3 strict, Vite 8, TailwindCSS 4.3 + Shadcn/ui,

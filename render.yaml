@@ -9,8 +9,6 @@ services:
     healthCheckPath: /actuator/health
     autoDeploy: false # deploys are triggered by the GitHub Actions "Deploy" workflow instead
     envVars:
-      - key: STORAGE_PROVIDER
-        value: cloudinary
       - key: MEDIA_BUCKET
         value: genealogy-media
       - key: SERVER_FORWARD_HEADERS_STRATEGY
