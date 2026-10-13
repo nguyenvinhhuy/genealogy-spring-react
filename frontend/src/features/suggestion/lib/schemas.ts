@@ -9,13 +9,10 @@ const MAX_MESSAGE = 4000
 // Matches the server's SuggestionReviewRequest.
 const MAX_REVIEW_NOTE = 2000
 
-// The gender select's value for "leave it as recorded", since Radix Select cannot hold an empty string.
+// The sex select's value for "leave it as recorded" on an edit, and for "not chosen yet" on a new person.
 export const KEEP_GENDER = 'KEEP'
 
-// The union select's value for "a new one-parent union".
-export const NEW_UNION = 'new'
-
-// The union select's value before anyone chose: the person's first union, or a new one when they have none yet.
+// The union select's value before anyone chose: the only union, a new one when there is none, or a choice to make.
 export const FIRST_UNION = ''
 
 const dateField = z.custom<Partial<GenealogyDate> | null>()
@@ -48,6 +45,13 @@ export function buildSuggestionSchema(t: TFunction) {
       // The server refuses both shapes too; saying so here saves a round trip and a lost message.
       if (values.kind === 'CREATE' && !values.givenName.trim()) {
         context.addIssue({ code: 'custom', path: ['givenName'], message: t('person.validation.givenNameRequired') })
+      }
+      // A new person needs họ and giới tính as the person form does; "Chưa rõ" is a choice (§6.1).
+      if (values.kind === 'CREATE' && !values.surname.trim()) {
+        context.addIssue({ code: 'custom', path: ['surname'], message: t('person.validation.surnameRequired') })
+      }
+      if (values.kind === 'CREATE' && values.gender === KEEP_GENDER) {
+        context.addIssue({ code: 'custom', path: ['gender'], message: t('person.validation.genderRequired') })
       }
       const nothing = !values.givenName.trim() && values.gender === KEEP_GENDER && !values.birth && !values.death
       if (values.kind === 'UPDATE' && nothing) {

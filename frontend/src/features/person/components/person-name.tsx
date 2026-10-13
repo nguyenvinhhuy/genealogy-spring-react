@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { loadPersonNode } from '@/features/person/lib/node-batcher'
 
 // Names change rarely, so a resolved name stays fresh for the life of the page.
-const STALE_MS = 5 * 60 * 1000
+export const NODE_STALE_MS = 5 * 60 * 1000
 
 /** Props of {@link PersonName}. */
 interface PersonNameProps {
@@ -21,7 +21,7 @@ export function PersonName({ id }: PersonNameProps) {
   const { data } = useQuery({
     queryKey: ['person', id, 'node'],
     queryFn: () => loadPersonNode(id),
-    staleTime: STALE_MS,
+    staleTime: NODE_STALE_MS,
   })
   return <>{data?.displayName ?? `#${id}`}</>
 }

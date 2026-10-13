@@ -41,6 +41,16 @@ public interface MemberService {
     MemberResponse update(Long actorId, Role callerRole, Long memberId, UpdateMemberRequest request);
 
     /**
+     * Deletes an account by hiding it: it can no longer sign in and leaves the list, while the trail keeps its name.
+     *
+     * @param actorId the ADMIN deleting it
+     * @param callerRole the calling member's access level
+     * @param memberId the account to delete
+     * @param changeNote why it was deleted, may be null
+     */
+    void delete(Long actorId, Role callerRole, Long memberId, String changeNote);
+
+    /**
      * Checks a presented email and password, without letting the stored hash leave this feature.
      *
      * @param email the email presented, in any case

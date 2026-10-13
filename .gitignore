@@ -28,3 +28,7 @@ Thumbs.db
 
 # Leftovers of docker build on Windows
 *;C
+
+# Personal notes, not shared
+docs/todo.md
+docs/plan.md

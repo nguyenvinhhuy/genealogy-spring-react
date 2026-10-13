@@ -52,6 +52,10 @@ public class Member {
     @Column(name = "credential_version", nullable = false)
     private int credentialVersion;
 
+    // Set when an ADMIN deletes the account, which hides it rather than removing the row the trail names.
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

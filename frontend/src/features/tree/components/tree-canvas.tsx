@@ -6,7 +6,8 @@ import { usePanZoom } from '@/features/tree/hooks'
 import type { TreeNode, UnionSlot } from '@/features/tree/lib/build-tree'
 import type { PersonNode } from '@/features/tree/types'
 
-const NODE_WIDTH = 168
+// Wide enough for "1. Dâu: " before a full Vietnamese name.
+const NODE_WIDTH = 184
 const ROW_HEIGHT = 20
 const BOX_PADDING_Y = 16
 const LABEL_INSET_X = 10
@@ -15,6 +16,9 @@ const CORNER_RADIUS = 8
 const UNION_ANCHOR_GAP = 28
 const UNION_MARKER_RADIUS = 7
 const H_GAP = 28
+// Siblings a little apart, and two families no further than that: d3's default of 2 left a hole between them.
+const SIBLING_SEPARATION = 1.15
+const COUSIN_SEPARATION = 1.3
 const V_GAP = 96
 // How far the chart's first row sits from the edge it grows away from.
 const VIEW_MARGIN = 76
@@ -88,7 +92,9 @@ function unionAnchorOffset(node: TreeNode, unionIndex: number | null): number {
 function layoutHalf(root: TreeNode, sign: 1 | -1): Half {
   const tree = hierarchy<TreeNode>(root, (node) => node.children)
   const tallest = Math.max(...tree.descendants().map((node) => boxHeight(node.data)))
-  const laid = d3tree<TreeNode>().nodeSize([NODE_WIDTH + H_GAP, tallest + V_GAP])(tree)
+  const laid = d3tree<TreeNode>()
+    .nodeSize([NODE_WIDTH + H_GAP, tallest + V_GAP])
+    .separation((a, b) => (a.parent === b.parent ? SIBLING_SEPARATION : COUSIN_SEPARATION))(tree)
   return { nodes: laid.descendants(), links: laid.links(), sign }
 }
 
@@ -204,7 +210,8 @@ function Connector({
   const sourceY = source.y * sign + (sign * boxHeight(source.data)) / 2
   const targetY = target.y * sign - (sign * boxHeight(target.data)) / 2
   const sourceX = source.x + unionAnchorOffset(source.data, target.data.viaUnion)
-  const midY = (sourceY + targetY) / 2
+  // Measured from the parent, not halfway to each child: a shorter child's box put its bar at another height.
+  const midY = sourceY + (sign * V_GAP) / 2
 
   return (
     <path
@@ -237,8 +244,14 @@ function PersonBox({
   unknownSpouse: string
   onSelect: (personId: number) => void
 }) {
-  const { person, unions, repeat, children } = node.data
+  const { t } = useTranslation()
+  const { person, unions, repeat, children, link } = node.data
   const slots = labelledUnions(node.data)
+  // Below the focus person, a spouse married into the line: a dâu or a rể; at the focus, their own vợ or chồng.
+  const marriedIn = sign === 1 && node.depth > 0
+  const spouseRole = (spouse: PersonNode) =>
+    t(marriedIn ? `tree.inLaw.${spouse.gender}` : `person.roles.spouse.${spouse.gender}`)
+  const linkNote = sign === 1 && node.depth > 0 && link !== 'BIRTH' ? t(`tree.childLink.${link}`) : ''
   const numbered = unions.length > 1
   const height = boxHeight(node.data)
   const top = node.y * sign - height / 2
@@ -263,6 +276,7 @@ function PersonBox({
         y={baseline(0)}
         dead={recordedDead.has(person.id)}
         suffix={repeat ? REPEAT_MARK : ''}
+        note={linkNote}
         onSelect={onSelect}
         bold
       />
@@ -275,6 +289,7 @@ function PersonBox({
             y={baseline(index + 1)}
             dead={recordedDead.has(slot.spouse.id)}
             prefix={prefix}
+            role={spouseRole(slot.spouse)}
             onSelect={onSelect}
           />
         ) : (
@@ -314,7 +329,7 @@ function PersonBox({
 /**
  * Draws one clickable name inside a box.
  *
- * @param props the person, their baseline, whether they are recorded dead, any prefix or suffix, and the handler
+ * @param props the person, their baseline, whether they are recorded dead, any role, prefix, suffix or note
  * @returns the text element
  */
 function PersonLabel({
@@ -322,7 +337,9 @@ function PersonLabel({
   y,
   dead,
   prefix = '',
+  role = '',
   suffix = '',
+  note = '',
   onSelect,
   bold = false,
 }: {
@@ -330,7 +347,11 @@ function PersonLabel({
   y: number
   dead: boolean
   prefix?: string
+  // "Vợ", "Chồng", "Dâu", "Rể": who a spouse row is, so it is not told apart by a fainter colour alone.
+  role?: string
   suffix?: string
+  // "con nuôi", "con riêng": a child of the box above who is not a con đẻ.
+  note?: string
   onSelect: (personId: number) => void
   bold?: boolean
 }) {
@@ -338,13 +359,15 @@ function PersonLabel({
     <text
       x={LABEL_INSET_X}
       y={y}
-      className={`fill-foreground cursor-pointer text-[13px] ${bold ? 'font-medium' : 'opacity-70'}`}
+      className={`fill-foreground cursor-pointer text-[13px] ${bold ? 'font-medium' : ''}`}
       onClick={() => onSelect(person.id)}
     >
-      {prefix}
+      {prefix && <tspan className="fill-muted-foreground">{prefix}</tspan>}
+      {role && <tspan className="fill-muted-foreground text-[12px]">{`${role}: `}</tspan>}
       {person.displayName}
       {dead && <tspan className="fill-muted-foreground">{DEAD_MARK}</tspan>}
       {suffix && <tspan className="fill-muted-foreground">{suffix}</tspan>}
+      {note && <tspan className="fill-muted-foreground text-[11px] font-normal italic">{` · ${note}`}</tspan>}
     </text>
   )
 }

@@ -18,6 +18,8 @@ export type IssueCode =
   | 'IMPLAUSIBLE_LIFESPAN'
   | 'CHILD_BORN_BEFORE_MARRIAGE'
   | 'POSSIBLE_DUPLICATE'
+  | 'MISSING_SURNAME'
+  | 'MISSING_GENDER'
 
 /**
  * One data-quality finding.

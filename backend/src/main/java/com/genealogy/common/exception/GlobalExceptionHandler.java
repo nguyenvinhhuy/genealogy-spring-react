@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -47,6 +49,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             Map.entry("surname", "Họ"),
             Map.entry("middleName", "Tên đệm"),
             Map.entry("givenName", "Tên"),
+            Map.entry("gender", "Giới tính"),
             Map.entry("names", "Tên"),
             Map.entry("name", "Tên"),
             Map.entry("fullName", "Họ tên"),
@@ -111,10 +114,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(
-            MethodArgumentNotValidException ex,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
+            @NonNull MethodArgumentNotValidException ex,
+            @NonNull HttpHeaders headers,
+            @NonNull HttpStatusCode status,
+            @NonNull WebRequest request) {
         List<String> messages = new ArrayList<>();
         ex.getBindingResult().getFieldErrors().forEach(error -> messages.add(describe(error)));
         // A class-level rule is a global error; joining field errors only sent it out with an empty detail.
@@ -133,10 +136,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @Override
     protected ResponseEntity<Object> handleHandlerMethodValidationException(
-            HandlerMethodValidationException ex,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
+            @NonNull HandlerMethodValidationException ex,
+            @NonNull HttpHeaders headers,
+            @NonNull HttpStatusCode status,
+            @NonNull WebRequest request) {
         // The base class answered "Validation failure", naming neither the field nor the rule.
         List<String> messages = ex.getParameterValidationResults().stream()
                 .flatMap(result -> result.getResolvableErrors().stream()
@@ -171,14 +174,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @Override
     protected ResponseEntity<Object> handleMaxUploadSizeExceededException(
-            MaxUploadSizeExceededException ex,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
+            @NonNull MaxUploadSizeExceededException ex,
+            @NonNull HttpHeaders headers,
+            @NonNull HttpStatusCode status,
+            @NonNull WebRequest request) {
         // Overridden, not added: ResponseEntityExceptionHandler already maps this, and a second mapping stops the app.
         ProblemDetail problem =
-                problem(HttpStatus.PAYLOAD_TOO_LARGE, ProblemMessages.TITLE_TOO_LARGE, "Tệp quá lớn, tối đa 20 MB");
-        return handleExceptionInternal(ex, problem, headers, HttpStatus.PAYLOAD_TOO_LARGE, request);
+                problem(HttpStatus.CONTENT_TOO_LARGE, ProblemMessages.TITLE_TOO_LARGE, "Tệp quá lớn, tối đa 20 MB");
+        return handleExceptionInternal(ex, problem, headers, HttpStatus.CONTENT_TOO_LARGE, request);
     }
 
     /**
@@ -267,7 +270,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(
-            Exception ex, Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request) {
+            @NonNull Exception ex,
+            @Nullable Object body,
+            @NonNull HttpHeaders headers,
+            @NonNull HttpStatusCode statusCode,
+            @NonNull WebRequest request) {
         // Spring titles its own problems with the reason phrase ("Bad Request"); ours carry a Vietnamese title.
         HttpStatus status = HttpStatus.resolve(statusCode.value());
         // Most of Spring's own handlers pass no body and let the exception carry it, a 404 among them.
@@ -397,7 +404,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             case FORBIDDEN -> ProblemMessages.TITLE_FORBIDDEN;
             case NOT_FOUND -> ProblemMessages.TITLE_NOT_FOUND;
             case CONFLICT -> ProblemMessages.TITLE_CONFLICT;
-            case PAYLOAD_TOO_LARGE -> ProblemMessages.TITLE_TOO_LARGE;
+            // CONTENT_TOO_LARGE, not the deprecated alias: resolve(413) returns the constant declared first.
+            case CONTENT_TOO_LARGE -> ProblemMessages.TITLE_TOO_LARGE;
             case SERVICE_UNAVAILABLE -> ProblemMessages.TITLE_UNAVAILABLE;
             default -> status.is5xxServerError()
                     ? ProblemMessages.TITLE_SERVER_ERROR

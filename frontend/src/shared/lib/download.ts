@@ -24,7 +24,7 @@ export async function downloadFile(
  * @param blob the file contents
  * @param filename what to call it on disk
  */
-function saveBlob(blob: Blob, filename: string): void {
+export function saveBlob(blob: Blob, filename: string): void {
   // A plain link cannot carry the Authorization header the export endpoints need, so axios fetches it first.
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')

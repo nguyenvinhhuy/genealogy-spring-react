@@ -1,16 +1,19 @@
 package com.genealogy.family.controller;
 
 import com.genealogy.common.security.AuthPrincipal;
+import com.genealogy.common.web.ManualEntry;
 import com.genealogy.family.dto.request.AddRelationRequest;
 import com.genealogy.family.dto.request.LinkRelationRequest;
 import com.genealogy.family.dto.response.AddRelationResponse;
 import com.genealogy.family.service.FamilyService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import jakarta.validation.groups.Default;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,7 +41,7 @@ public class RelationController {
     @Operation(summary = "Add a new spouse or child to a person")
     public ResponseEntity<AddRelationResponse> add(
             @PathVariable Long personId,
-            @Valid @RequestBody AddRelationRequest request,
+            @Validated({Default.class, ManualEntry.class}) @RequestBody AddRelationRequest request,
             @AuthenticationPrincipal AuthPrincipal principal) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(familyService.addRelation(personId, request, principal.id()));

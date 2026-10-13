@@ -221,6 +221,16 @@ undirected cycles).
 `place` is hierarchical (`WARD → DISTRICT → PROVINCE → COUNTRY`) with `parent_id` and optional lat/lng. Vietnamese địa
 danh are renamed and merged constantly; a free-text column cannot be aggregated or mapped later.
 
+- **Today's units are seeded** (decided by the user 2026-10-13): `V18` writes Việt Nam, the 34 tỉnh/thành and 3,321
+  xã/phường/đặc khu from `thanglequoc/vietnamese-provinces-database` **v5.2.0** (MIT, notice in the migration). After
+  the 2025 reform a xã sits directly under its tỉnh. Names are the level plus the name ("Phường Ba Đình"), built
+  rather than read from `FullName`, which v5.2.0 misspells once ("xã Bắc Sơn"). Hand-entered rows with the same name
+  under the same parent are reused, comparing **with** accents (Xã Sơn Hà ≠ Xã Sơn Hạ). Historical units are not
+  seeded and are still added by hand. ❌ No runtime call to a public address API.
+- A later dataset release is a **new** migration that updates or adds rows by name; ❌ never edit `V18`.
+- The place page is a folding tree (tỉnh closed by default) and caps a filter at 200 matches: drawn whole, the seed
+  was 57,000 DOM nodes.
+
 ### 3.8 Every write is auditable
 
 A `revisions` table records who changed which entity, when, the before/after payload, and a free-text
@@ -386,6 +396,7 @@ the app unusable. Each rule has a severity and is listed on a data-quality page.
 - Child born more than 9 months before the parents' marriage (info only — common, and not an error)
 - Two recorded births, or two deaths, that cannot both be true — a merge keeps both on purpose (§8 F11)
 - Born before a birth parent was born
+- No họ on the primary name, or no recorded sex (info only — what §6.1 requires of new entries, listed for old ones)
 
 How the rules read the data (2026-09-23, §8.4):
 
@@ -509,7 +520,13 @@ The single biggest risk to this project is that entering people is tedious and t
 
 - The "add a child / add a spouse" flow must be reachable **from the tree node itself**, not only from a separate admin
   table.
-- Every field except a primary name is optional. A person with nothing but a name is a valid save.
+- ⚠️ **A person typed in by hand needs họ, tên and giới tính** (decided by the user 2026-10-13, replacing "every
+  field but a name is optional"). Giới tính is chosen from Nam, Nữ or **Chưa rõ**, so an old record that does not say
+  is entered honestly rather than guessed (§5.3); the select starts unchosen. The rule holds in the person create
+  form, the add-relation dialog and a con cháu's CREATE suggestion, and on the server for `POST /persons` and
+  `POST /persons/{id}/relations` through the `ManualEntry` validation group. ❌ It is **not** applied to a GEDCOM
+  import, an approved suggestion's own write, or an edit of someone already recorded: old data is never forced, and
+  `quality` lists it instead (`MISSING_SURNAME`, `MISSING_GENDER`, both `INFO`). Everything else stays optional.
 - The date input accepts fuzzy input directly (`1890`, `khoảng 1890`, `trước 1900`) and parses it into §3.2 — it is
   **not** a date picker requiring a full date.
 
@@ -954,6 +971,16 @@ just before the sweep. `@EnableScheduling` is on `GenealogyApplication`.
 account menu, which signs out on success because the server has already ended every session. 27 HTTP checks with
 three roles; note that `curl.exe` turns a non-ASCII argument into the ANSI codepage, so a Vietnamese body must be
 sent with `--data-binary @file` (§9).
+
+**An ADMIN edits an account's email and deletes accounts** (decided by the user 2026-10-13). The email goes through
+`PUT /api/v1/members/{id}`, lower-cased like sign-in, refused with 409 when another account holds it, and it ends
+every session of that account like a role change; an ADMIN changing their own is signed out and signs in with the new
+one. `DELETE /api/v1/members/{id}` **hides** the account (`members.deleted_at`, `V17`) and never removes the row:
+`revisions.changed_by` names it, and a removed row would leave every change it made unattributed (§3.8). A deleted
+account is inactive, out of the list, a 404 to every endpoint, its sessions end, and its email becomes
+`deleted-<id>@account.invalid` so the address can open a new account — the trail's `DELETE` snapshot keeps the old
+one. One's own account and the last active ADMIN cannot be deleted. ❌ Do not turn this into a hard delete. Self-service
+email change and forgotten-password mail are deferred: the app sends no email yet.
 
 **Still open.** ❌ Do not treat this section as closed until the table is empty.
 

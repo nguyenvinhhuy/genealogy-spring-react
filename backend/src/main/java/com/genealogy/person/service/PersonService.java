@@ -11,6 +11,7 @@ import com.genealogy.person.dto.response.PersonView;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -154,6 +155,13 @@ public interface PersonService {
      * @return every person's node projection, lowest id first
      */
     List<PersonNodeResponse> findAllNodes();
+
+    /**
+     * Lists the people recorded with no họ on their primary name, for the data-quality page.
+     *
+     * @return their ids, lowest first
+     */
+    Set<Long> findIdsWithoutSurname();
 
     /**
      * Loads every person with every name.

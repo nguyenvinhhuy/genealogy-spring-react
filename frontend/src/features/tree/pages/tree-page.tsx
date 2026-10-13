@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -7,6 +7,7 @@ import { fetchFamiliesOf } from '@/features/family/api'
 import { AddRelationDialog } from '@/features/person/components/add-relation-dialog'
 import { LinkPersonDialog } from '@/features/person/components/link-person-dialog'
 import { fetchSubgraph } from '@/features/tree/api'
+import { ExportChartMenu } from '@/features/tree/components/export-chart-menu'
 import { FanChart } from '@/features/tree/components/fan-chart'
 import { TreeCanvas } from '@/features/tree/components/tree-canvas'
 import { buildAncestorTree, buildDescendantTree } from '@/features/tree/lib/build-tree'
@@ -55,6 +56,7 @@ export function TreePage() {
 
   const [chart, setChart] = useState<ChartType>('DESCENDANTS')
   const [depth, setDepth] = useState(DEFAULT_DEPTH)
+  const chartRef = useRef<HTMLDivElement>(null)
 
   const direction = WALK_DIRECTION[chart]
 
@@ -65,11 +67,14 @@ export function TreePage() {
     staleTime: STALE_MS,
   })
 
-  const { data: families = [] } = useQuery({
+  const familiesQuery = useQuery({
     queryKey: ['families', focusId],
     queryFn: () => fetchFamiliesOf(focusId),
     enabled: mayEdit && Number.isFinite(focusId),
   })
+  const families = familiesQuery.data ?? []
+  // Not until the unions are in: opened earlier, the dialog defaulted a child to a new one-parent union.
+  const mayAddHere = mayEdit && data != null && familiesQuery.isSuccess
 
   const descendantRoot = useMemo(
     () => (data && direction !== 'ANCESTORS' ? buildDescendantTree(data) : null),
@@ -130,8 +135,25 @@ export function TreePage() {
               </SelectContent>
             </Select>
             {/* Adding a child or spouse right here, on the chart, is what keeps data entry cheap (§6.1). */}
-            {mayEdit && data && <AddRelationDialog key={focusId} personId={focusId} families={families} />}
-            {mayEdit && data && <LinkPersonDialog key={`link-${focusId}`} personId={focusId} families={families} />}
+            {mayAddHere && (
+              <AddRelationDialog
+                key={focusId}
+                personId={focusId}
+                families={families}
+                defaultKind="CHILD"
+                personName={focusName}
+              />
+            )}
+            {mayAddHere && (
+              <LinkPersonDialog
+                key={`link-${focusId}`}
+                personId={focusId}
+                families={families}
+                defaultKind="CHILD"
+                personName={focusName}
+              />
+            )}
+            {hasChart && <ExportChartMenu chartRef={chartRef} personName={focusName} />}
             <Button asChild variant="outline">
               <Link to={`/persons/${focusId}`}>{t('tree.openPerson')}</Link>
             </Button>
@@ -155,19 +177,21 @@ export function TreePage() {
 
       {!isLoading && !hasChart && <p className="text-muted-foreground text-sm">{t('tree.empty')}</p>}
 
-      {chart === 'FAN' && ancestorRoot && (
-        <FanChart root={ancestorRoot} rings={depth} recordedDead={recordedDead} onSelect={onSelect} />
-      )}
+      <div ref={chartRef}>
+        {chart === 'FAN' && ancestorRoot && (
+          <FanChart root={ancestorRoot} rings={depth} recordedDead={recordedDead} onSelect={onSelect} />
+        )}
 
-      {chart !== 'FAN' && hasChart && (
-        <TreeCanvas
-          descendants={descendantRoot}
-          ancestors={ancestorRoot}
-          focusId={focusId}
-          recordedDead={recordedDead}
-          onSelect={onSelect}
-        />
-      )}
+        {chart !== 'FAN' && hasChart && (
+          <TreeCanvas
+            descendants={descendantRoot}
+            ancestors={ancestorRoot}
+            focusId={focusId}
+            recordedDead={recordedDead}
+            onSelect={onSelect}
+          />
+        )}
+      </div>
 
       <p className="text-muted-foreground text-xs">{t('tree.hint')}</p>
       <p className="text-muted-foreground text-xs">{t('tree.legend')}</p>

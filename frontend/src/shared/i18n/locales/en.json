@@ -88,7 +88,7 @@
   },
   "member": {
     "pageTitle": "Accounts",
-    "subtitle": "Who may sign in to the gia phả. The clan head opens accounts, changes roles, disables them, and resets forgotten passwords here.",
+    "subtitle": "Who may sign in to the gia phả. The clan head opens accounts, changes roles, disables or deletes them, and resets forgotten passwords here.",
     "create": "Add account",
     "createHint": "Hand the first password over in person; they can change it once signed in.",
     "created": "Account opened for {{name}}.",
@@ -96,8 +96,8 @@
     "confirmFirstPassword": "Repeat the first password",
     "edit": "Edit",
     "editTitle": "Edit {{name}}'s account",
-    "editHint": "Changing the role or disabling the account signs them out on every device.",
-    "editSelfHint": "This is your own account: you cannot change your own role or disable yourself, or nobody would be left to manage the clan.",
+    "editHint": "Changing the email or role, or disabling the account, signs them out on every device.",
+    "editSelfHint": "This is your own account: you cannot change your own role or disable yourself, or nobody would be left to manage the clan. Changing your email means signing in again with the new one.",
     "updated": "Saved {{name}}'s account.",
     "roleHint": {
       "MEMBER": "Member: reads the gia phả and suggests corrections.",
@@ -129,7 +129,12 @@
       "emailInvalid": "Not a valid email",
       "mismatch": "The two new passwords do not match",
       "sameAsCurrent": "The new password must differ from the current one"
-    }
+    },
+    "emailChangedSelf": "Email changed. Sign in again with the new email.",
+    "delete": "Delete",
+    "deleteTitle": "Delete the account of {{name}}?",
+    "deleteDescription": "They will no longer be able to sign in and leave this list. The changes they made to the gia phả still carry their name. The email is freed for a new account if needed. This cannot be undone.",
+    "deleted": "Deleted the account of {{name}}."
   },
   "person": {
     "title": "People",
@@ -163,7 +168,9 @@
     "deleteDescription": "Their events, photos, citations and suggestions are deleted too. The change history is kept.",
     "deleted": "Deleted from the gia phả",
     "validation": {
-      "givenNameRequired": "At least one name is needed"
+      "givenNameRequired": "A given name is required",
+      "surnameRequired": "A surname is required",
+      "genderRequired": "Choose a sex: male, female or not known"
     },
     "relations": "Relations",
     "noRelations": "No relations recorded yet",
@@ -178,7 +185,7 @@
     "genders": {
       "MALE": "Male",
       "FEMALE": "Female",
-      "UNKNOWN": "Unknown"
+      "UNKNOWN": "Not known"
     },
     "nameTypes": {
       "BIRTH": "Birth name",
@@ -188,7 +195,33 @@
       "THUY": "Posthumous name",
       "SAINT": "Baptismal name",
       "ALIAS": "Alias"
-    }
+    },
+    "roles": {
+      "spouse": {
+        "MALE": "Husband",
+        "FEMALE": "Wife",
+        "UNKNOWN": "Spouse"
+      },
+      "parent": {
+        "MALE": "Father",
+        "FEMALE": "Mother",
+        "UNKNOWN": "Parent"
+      }
+    },
+    "picker": {
+      "placeholder": "Click to find a person",
+      "typeToSearch": "Type a name, accents optional",
+      "searching": "Searching…",
+      "noMatch": "Nobody found",
+      "more": "More people match; type more to narrow it down"
+    },
+    "duplicateHint": {
+      "title": "Someone with this name is already recorded",
+      "hint": "If it is the same person, use the existing record instead of creating a duplicate.",
+      "open": "Open",
+      "useExisting": "Use this person"
+    },
+    "genderPlaceholder": "Choose sex"
   },
   "family": {
     "spouse": "Spouse",
@@ -252,7 +285,14 @@
     "validation": {
       "orderNumber": "Order must be a number, 0 or more",
       "birthOrder": "Birth order must be a number, 1 or more"
-    }
+    },
+    "pickUnion": "Choose a union",
+    "pickUnionRequired": "Choose which union the child belongs to",
+    "unknownSpouseUnion": "Spouse not recorded",
+    "parents": "Parents",
+    "noParents": "No parents recorded",
+    "addRelationFor": "Add a relation to {{name}}",
+    "linkExistingFor": "Link {{name}} to someone recorded"
   },
   "event": {
     "title": "Events",
@@ -321,7 +361,9 @@
       "MARRIED_TOO_YOUNG": "Married at {{age}}",
       "IMPLAUSIBLE_LIFESPAN": "Lived {{years}} years - hard to believe",
       "CHILD_BORN_BEFORE_MARRIAGE": "Born before the parents' marriage",
-      "POSSIBLE_DUPLICATE": "May be the same person as {{related}}"
+      "POSSIBLE_DUPLICATE": "May be the same person as {{related}}",
+      "MISSING_SURNAME": "No surname on the primary name",
+      "MISSING_GENDER": "Sex not recorded"
     },
     "severityCount": "{{label}}: {{n}}"
   },
@@ -661,7 +703,7 @@
     "truncatedAbove": "There are older generations beyond this view - raise the generation count to see them.",
     "truncatedBelow": "There are descendants beyond this view - raise the generation count to see them.",
     "hint": "Drag to pan, scroll to zoom. Click a name to centre the chart on that person.",
-    "legend": "Dashed line: adopted, step or foster child. Dashed box with ↺: already drawn elsewhere on this chart. Numbered circles: which marriage the children belong to.",
+    "legend": "Bold line: a person of the family line. Husband/Wife: spouse of the person at the centre; Son-in-law/Daughter-in-law: someone who married into the line. Dashed line and italics: adopted, step or foster child. Dashed box with ↺: drawn elsewhere on the chart. Numbered circle: which union the children belong to.",
     "unknownSpouse": "spouse not recorded",
     "canvasLabel": "Family tree chart",
     "fanLabel": "Ancestor fan chart",
@@ -670,6 +712,27 @@
       "ANCESTORS": "Ancestors",
       "HOURGLASS": "Hourglass",
       "FAN": "Fan"
+    },
+    "inLaw": {
+      "MALE": "Son-in-law",
+      "FEMALE": "Daughter-in-law",
+      "UNKNOWN": "In-law"
+    },
+    "childLink": {
+      "BIRTH": "birth child",
+      "ADOPTED": "adopted",
+      "STEP": "stepchild",
+      "FOSTER": "foster child"
+    },
+    "export": {
+      "button": "Export chart",
+      "png": "Download PNG",
+      "svg": "Download SVG",
+      "print": "Print or save as PDF",
+      "printTitle": "Family tree — {{name}}",
+      "nothing": "There is no chart to export yet",
+      "failed": "The image could not be made; try the SVG file",
+      "popupBlocked": "The browser blocked the print window. Allow pop-ups and try again."
     }
   },
   "common": {
@@ -694,7 +757,7 @@
   },
   "place": {
     "title": "Places",
-    "subtitle": "Villages in communes, communes in districts, districts in provinces - rename a place once and every event there follows",
+    "subtitle": "The 34 provinces and today's communes and wards are already here. Add older places (districts, cantons, villages) by hand - rename a place once and every event there follows",
     "search": "Search places",
     "searchPlaceholder": "Search by name - accents optional",
     "none": "No place recorded",
@@ -723,7 +786,12 @@
     "validation": {
       "nameRequired": "A name is required",
       "nameTooLong": "At most 200 characters"
-    }
+    },
+    "expand": "Expand {{name}}",
+    "collapse": "Collapse {{name}}",
+    "childCount_one": "{{count}} place",
+    "childCount_other": "{{count}} places",
+    "tooMany": "Showing {{shown}} of {{total}} matching places. Type more to narrow it down."
   },
   "branch": {
     "title": "Clan branches",

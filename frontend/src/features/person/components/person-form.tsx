@@ -1,12 +1,15 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMemo } from 'react'
-import { Controller, useFieldArray, useForm } from 'react-hook-form'
+import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { BranchPicker, NO_BRANCH } from '@/features/branch/components/branch-picker'
+import { DuplicateHint } from '@/features/person/components/duplicate-hint'
 import {
   buildPersonSchema,
+  chosenGender,
   GENDERS,
+  NO_GENDER,
   NAME_TYPES,
   type PersonFormValues,
 } from '@/features/person/lib/person-schema'
@@ -41,7 +44,7 @@ interface PersonFormProps {
  */
 function defaultsOf(person: PersonDetail | undefined): PersonFormValues {
   return {
-    gender: person?.gender ?? 'UNKNOWN',
+    gender: person?.gender ?? NO_GENDER,
     branchId: person?.branchId != null ? String(person.branchId) : NO_BRANCH,
     notes: person?.notes ?? '',
     names: person?.names.length
@@ -65,13 +68,16 @@ function defaultsOf(person: PersonDetail | undefined): PersonFormValues {
  */
 export function PersonForm({ person, submitting, onSubmit, onCancel }: PersonFormProps) {
   const { t } = useTranslation()
-  const schema = useMemo(() => buildPersonSchema(t), [t])
+  const creating = person == null
+  const schema = useMemo(() => buildPersonSchema(t, creating), [t, creating])
 
   const { control, register, handleSubmit, getValues, setValue, formState } = useForm<PersonFormValues>({
     resolver: zodResolver(schema),
     defaultValues: defaultsOf(person),
   })
   const { fields, append, remove } = useFieldArray({ control, name: 'names' })
+  const names = useWatch({ control, name: 'names' })
+  const primaryName = names.find((name) => name.primary) ?? names[0]
 
   const makePrimary = (index: number) =>
     getValues('names').forEach((_, at) => setValue(`names.${at}.primary`, at === index, { shouldDirty: true }))
@@ -87,7 +93,7 @@ export function PersonForm({ person, submitting, onSubmit, onCancel }: PersonFor
 
   const submit = (values: PersonFormValues) =>
     onSubmit({
-      gender: values.gender,
+      gender: chosenGender(values.gender),
       branchId: values.branchId === NO_BRANCH ? null : Number(values.branchId),
       notes: values.notes.trim() || null,
       names: values.names
@@ -143,15 +149,32 @@ export function PersonForm({ person, submitting, onSubmit, onCancel }: PersonFor
             </div>
             <div className="space-y-1">
               <Label htmlFor={`surname-${index}`}>{t('person.surname')}</Label>
-              <Input id={`surname-${index}`} {...register(`names.${index}.surname`)} />
+              <Input
+                id={`surname-${index}`}
+                aria-invalid={formState.errors.names?.[index]?.surname != null}
+                {...register(`names.${index}.surname`)}
+              />
+              {formState.errors.names?.[index]?.surname && (
+                <p className="text-destructive text-xs">{formState.errors.names[index].surname.message}</p>
+              )}
             </div>
             <div className="space-y-1">
               <Label htmlFor={`middle-${index}`}>{t('person.middleName')}</Label>
               <Input id={`middle-${index}`} {...register(`names.${index}.middleName`)} />
+              {formState.errors.names?.[index]?.middleName && (
+                <p className="text-destructive text-xs">{formState.errors.names[index].middleName.message}</p>
+              )}
             </div>
             <div className="space-y-1">
               <Label htmlFor={`given-${index}`}>{t('person.givenName')}</Label>
-              <Input id={`given-${index}`} {...register(`names.${index}.givenName`)} />
+              <Input
+                id={`given-${index}`}
+                aria-invalid={formState.errors.names?.[index]?.givenName != null}
+                {...register(`names.${index}.givenName`)}
+              />
+              {formState.errors.names?.[index]?.givenName && (
+                <p className="text-destructive text-xs">{formState.errors.names[index].givenName.message}</p>
+              )}
             </div>
 
             <div className="col-span-4 flex gap-2">
@@ -177,10 +200,13 @@ export function PersonForm({ person, submitting, onSubmit, onCancel }: PersonFor
             </div>
           </div>
         ))}
-        {formState.errors.names && (
-          <p className="text-destructive text-xs">
-            {formState.errors.names.message ?? formState.errors.names.root?.message}
-          </p>
+        {/* Only while creating: an edit is of someone already on record, who of course matches their own name. */}
+        {creating && primaryName != null && (
+          <DuplicateHint
+            surname={primaryName.surname}
+            middleName={primaryName.middleName}
+            givenName={primaryName.givenName}
+          />
         )}
       </div>
 
@@ -191,8 +217,8 @@ export function PersonForm({ person, submitting, onSubmit, onCancel }: PersonFor
           name="gender"
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger id="gender" className="w-full">
-                <SelectValue />
+              <SelectTrigger id="gender" className="w-full" aria-invalid={formState.errors.gender != null}>
+                <SelectValue placeholder={t('person.genderPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {GENDERS.map((value) => (
@@ -204,6 +230,9 @@ export function PersonForm({ person, submitting, onSubmit, onCancel }: PersonFor
             </Select>
           )}
         />
+        {formState.errors.gender && (
+          <p className="text-destructive text-xs">{formState.errors.gender.message}</p>
+        )}
       </div>
 
       <div className="space-y-2">

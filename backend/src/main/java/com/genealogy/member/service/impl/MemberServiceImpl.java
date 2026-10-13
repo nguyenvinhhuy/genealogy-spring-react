@@ -21,6 +21,7 @@ import com.genealogy.member.repository.MemberRepository;
 import com.genealogy.member.service.CredentialsChanged;
 import com.genealogy.member.service.MemberService;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -45,6 +46,10 @@ public class MemberServiceImpl implements MemberService {
             "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
     private static final String ADMIN_ONLY = "Chỉ trưởng tộc được quản lý tài khoản.";
+
+    // A deleted account's email becomes "deleted-<id>@account.invalid": unique, and .invalid can never be delivered.
+    private static final String DELETED_EMAIL_PREFIX = "deleted-";
+    private static final String DELETED_EMAIL_SUFFIX = "@account.invalid";
 
     private final MemberRepository memberRepository;
     private final MemberMapper memberMapper;
@@ -160,7 +165,7 @@ public class MemberServiceImpl implements MemberService {
         // The matcher is not the guard (§3.6): every account's email is personal data.
         requireAdmin(callerRole);
         Pageable page = PageRequests.capped(pageable, Sort.by("fullName").and(Sort.by("id")));
-        return memberRepository.findAll(page).map(memberMapper::toResponse);
+        return memberRepository.findByDeletedAtIsNull(page).map(memberMapper::toResponse);
     }
 
     /**
@@ -202,7 +207,7 @@ public class MemberServiceImpl implements MemberService {
     }
 
     /**
-     * Renames an account, changes its role or disables it, refusing callers below ADMIN.
+     * Renames an account, changes its email or role, or disables it, refusing callers below ADMIN.
      *
      * @param actorId the ADMIN making the change
      * @param callerRole the calling member's access level
@@ -228,9 +233,18 @@ public class MemberServiceImpl implements MemberService {
             throw new BadRequestException("Phải còn ít nhất một trưởng tộc đang hoạt động.");
         }
 
+        String email = normaliseEmail(request.email());
+        boolean emailChanges = !email.equals(member.getEmail());
+        if (emailChanges && memberRepository.existsByEmail(email)) {
+            throw new ConflictException("Email này đã có tài khoản: " + email);
+        }
+
         MemberSnapshot before = memberMapper.toSnapshot(member);
-        boolean accessChanges = member.getRole() != request.role() || member.isActive() != request.active();
+        // A new sign-in address ends the old sessions too, so whoever held the old mailbox keeps no way in.
+        boolean accessChanges = emailChanges || member.getRole() != request.role()
+                || member.isActive() != request.active();
         member.setFullName(request.fullName().strip());
+        member.setEmail(email);
         member.setRole(request.role());
         member.setActive(request.active());
         if (accessChanges) {
@@ -241,6 +255,38 @@ public class MemberServiceImpl implements MemberService {
         auditService.record(AuditEntityType.MEMBER, memberId, AuditAction.UPDATE,
                 before, memberMapper.toSnapshot(member), actorId, request.changeNote());
         return memberMapper.toResponse(member);
+    }
+
+    /**
+     * Deletes an account by hiding it: it can no longer sign in and leaves the list, while the trail keeps its name.
+     *
+     * @param actorId the ADMIN deleting it
+     * @param callerRole the calling member's access level
+     * @param memberId the account to delete
+     * @param changeNote why it was deleted, may be null
+     */
+    @Override
+    @Transactional
+    public void delete(Long actorId, Role callerRole, Long memberId, String changeNote) {
+        requireAdmin(callerRole);
+        // The same lock as update, so two ADMINs deleting each other cannot both pass the last-ADMIN check.
+        List<Member> activeAdmins = memberRepository.lockActiveByRole(Role.ADMIN);
+        Member member = require(memberId);
+        if (memberId.equals(actorId)) {
+            throw new BadRequestException("Không tự xoá tài khoản của chính mình.");
+        }
+        if (member.isActive() && member.getRole() == Role.ADMIN && activeAdmins.size() <= 1) {
+            throw new BadRequestException("Phải còn ít nhất một trưởng tộc đang hoạt động.");
+        }
+
+        MemberSnapshot before = memberMapper.toSnapshot(member);
+        member.setActive(false);
+        member.setDeletedAt(Instant.now());
+        // The address is freed so the person can be given a new account; the trail's snapshot keeps the old one.
+        member.setEmail(DELETED_EMAIL_PREFIX + memberId + DELETED_EMAIL_SUFFIX);
+        member.setCredentialVersion(member.getCredentialVersion() + 1);
+        events.publishEvent(new CredentialsChanged(memberId));
+        auditService.record(AuditEntityType.MEMBER, memberId, AuditAction.DELETE, before, null, actorId, changeNote);
     }
 
     /**
@@ -318,7 +364,9 @@ public class MemberServiceImpl implements MemberService {
      * @return the entity
      */
     private Member require(Long memberId) {
+        // A deleted account is gone to every caller, though its row stays for the trail.
         return memberRepository.findById(memberId)
+                .filter(member -> member.getDeletedAt() == null)
                 .orElseThrow(() -> new NotFoundException("Không có tài khoản với id " + memberId));
     }
 

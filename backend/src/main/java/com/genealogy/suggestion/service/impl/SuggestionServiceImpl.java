@@ -519,6 +519,13 @@ public class SuggestionServiceImpl implements SuggestionService {
             if (person.names() == null || person.names().isEmpty()) {
                 throw new BadRequestException("Đề xuất thêm người mới phải có ít nhất một tên");
             }
+            // The same rule as the person form, since a con cháu is typing them in by hand too (§6.1).
+            if (!PersonNameRequest.primaryHasSurname(person.names())) {
+                throw new BadRequestException("Đề xuất thêm người mới phải có họ ở tên chính");
+            }
+            if (person.gender() == null) {
+                throw new BadRequestException("Đề xuất thêm người mới phải chọn giới tính: Nam, Nữ hoặc Chưa rõ");
+            }
             personService.requireExists(person.anchor().personId());
             return;
         }

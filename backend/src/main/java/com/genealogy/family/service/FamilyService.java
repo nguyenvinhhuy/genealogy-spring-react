@@ -14,6 +14,7 @@ import com.genealogy.family.dto.response.UnionEdgeResponse;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /** Union and parentage operations. */
 public interface FamilyService {
@@ -33,6 +34,14 @@ public interface FamilyService {
      * @return the union
      */
     FamilyResponse getById(Long id);
+
+    /**
+     * Lists the unions one person is a child of: their parents, and the siblings born or brought into each.
+     *
+     * @param personId the person id
+     * @return the unions that person is a child of
+     */
+    List<FamilyResponse> findParentUnions(Long personId);
 
     /**
      * Creates a union.
@@ -123,9 +132,8 @@ public interface FamilyService {
      * @param childId the person to unlink
      * @param actorId the member making the change, may be null for a system change
      * @param changeNote why the child was unlinked, or null
-     * @return the updated union
      */
-    FamilyResponse removeChild(Long familyId, Long childId, Long actorId, String changeNote);
+    void removeChild(Long familyId, Long childId, Long actorId, String changeNote);
 
     /** Recomputes every person's generation from the current parentage graph. */
     void recomputeGenerations();
@@ -136,6 +144,13 @@ public interface FamilyService {
      * @return the founder's person id, or empty when no union is recorded
      */
     Optional<Long> findFounderId();
+
+    /**
+     * Lists the people of the clan's own blood line: each family's founder and everyone born of them.
+     *
+     * @return their person ids; a spouse who married in, a con nuôi or a con riêng is not among them
+     */
+    Set<Long> findClanMemberIds();
 
     /**
      * Loads every union these people are a partner in, with their children, in one pass (CLAUDE.md §4).

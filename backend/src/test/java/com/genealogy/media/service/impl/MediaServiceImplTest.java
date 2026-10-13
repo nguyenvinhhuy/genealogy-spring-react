@@ -308,7 +308,7 @@ class MediaServiceImplTest {
         List<MediaResponse> files = media.findByTarget(MediaTargetType.PERSON, PERSON_ID, Role.MEMBER);
 
         assertThat(files).hasSize(2);
-        assertThat(files.get(0).uploadedByName()).isEqualTo("Nguyễn Văn Trưởng");
+        assertThat(files.getFirst().uploadedByName()).isEqualTo("Nguyễn Văn Trưởng");
         // The second has no recorded uploader, which must not become Map.get(null) (§9).
         assertThat(files.get(1).uploadedByName()).isNull();
     }

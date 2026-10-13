@@ -33,6 +33,7 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -57,6 +58,15 @@ public class FamilyServiceImpl implements FamilyService {
 
     private static final AuditEntityType ENTITY_TYPE = AuditEntityType.FAMILY;
 
+    // Recorded birth order first, then the unrecorded in the order they were entered, so a list never reshuffles.
+    private static final Comparator<FamilyChild> SIBLING_ORDER = Comparator
+            .comparing(FamilyChild::getBirthOrder, Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(FamilyChild::getChildId);
+
+    // Vợ cả first; two unions at one position stay in the order they were recorded.
+    private static final Comparator<Family> UNION_ORDER =
+            Comparator.comparingInt(Family::getOrderIndex).thenComparing(Family::getId);
+
     private final FamilyRepository familyRepository;
     private final FamilyChildRepository familyChildRepository;
     private final FamilyMapper familyMapper;
@@ -73,15 +83,41 @@ public class FamilyServiceImpl implements FamilyService {
      */
     @Override
     public List<FamilyResponse> findByPerson(Long personId) {
-        List<Family> unions = familyRepository.findByPartner1IdOrPartner2IdOrderByOrderIndexAsc(personId, personId);
+        return withChildren(familyRepository.findByPartner1IdOrPartner2IdOrderByOrderIndexAsc(personId, personId));
+    }
+
+    /**
+     * Lists the unions one person was born or brought into, each with its partners and every child.
+     *
+     * @param personId the person id
+     * @return the unions that person is a child of
+     */
+    @Override
+    public List<FamilyResponse> findParentUnions(Long personId) {
+        List<Long> familyIds = familyChildRepository.findByChildId(personId).stream()
+                .map(FamilyChild::getFamilyId)
+                .distinct()
+                .toList();
+        return familyIds.isEmpty() ? List.of() : withChildren(familyRepository.findAllById(familyIds));
+    }
+
+    /**
+     * Builds the response for several unions, loading all of their children in one query.
+     *
+     * @param unions the unions
+     * @return the responses, vợ cả first
+     */
+    private List<FamilyResponse> withChildren(List<Family> unions) {
         if (unions.isEmpty()) {
             return List.of();
         }
         // Every union's children in one query, not one per union: the person page asks for this on every visit.
         Map<Long, List<FamilyChild>> childrenByUnion = familyChildRepository
                 .findByFamilyIdInOrderByBirthOrderAsc(unions.stream().map(Family::getId).toList()).stream()
+                .sorted(SIBLING_ORDER)
                 .collect(Collectors.groupingBy(FamilyChild::getFamilyId));
         return unions.stream()
+                .sorted(UNION_ORDER)
                 .map(family -> familyMapper.toResponse(family, childrenByUnion.getOrDefault(family.getId(), List.of())))
                 .toList();
     }
@@ -448,11 +484,10 @@ public class FamilyServiceImpl implements FamilyService {
      * @param childId the person to unlink
      * @param actorId the member making the change, may be null for a system change
      * @param changeNote why the child was unlinked, or null
-     * @return the updated union
      */
     @Override
     @Transactional
-    public FamilyResponse removeChild(Long familyId, Long childId, Long actorId, String changeNote) {
+    public void removeChild(Long familyId, Long childId, Long actorId, String changeNote) {
         lockParentage();
         Family family = require(familyId);
         FamilyResponse before = toResponse(family);
@@ -460,9 +495,7 @@ public class FamilyServiceImpl implements FamilyService {
 
         familyChildRepository.delete(link);
         recomputeGenerations();
-        FamilyResponse after = toResponse(family);
-        auditService.record(ENTITY_TYPE, familyId, AuditAction.UPDATE, before, after, actorId, changeNote);
-        return after;
+        auditService.record(ENTITY_TYPE, familyId, AuditAction.UPDATE, before, toResponse(family), actorId, changeNote);
     }
 
     /** Recomputes every person's generation from the current parentage graph. */
@@ -482,6 +515,16 @@ public class FamilyServiceImpl implements FamilyService {
     @Override
     public Optional<Long> findFounderId() {
         return GenerationCalculator.founderOfLargestFamily(loadUnions(), personService.findAllGenders());
+    }
+
+    /**
+     * Lists the people of the clan's own blood line: each family's founder and everyone born of them.
+     *
+     * @return their person ids
+     */
+    @Override
+    public Set<Long> findClanMemberIds() {
+        return GenerationCalculator.clanMembers(loadUnions(), personService.findAllGenders());
     }
 
     /** Serialises every write that reads the parentage graph and then changes it, until the transaction ends. */
@@ -930,11 +973,13 @@ public class FamilyServiceImpl implements FamilyService {
         // One query for every union's children, so expanding a BFS layer stays two round trips, not N.
         Map<Long, List<ChildEdgeResponse>> childrenByFamily =
                 familyChildRepository.findByFamilyIdInOrderByBirthOrderAsc(familyIds).stream()
+                        .sorted(SIBLING_ORDER)
                         .collect(Collectors.groupingBy(
                                 FamilyChild::getFamilyId,
                                 Collectors.mapping(familyMapper::toChildEdge, Collectors.toList())));
 
         return families.stream()
+                .sorted(UNION_ORDER)
                 .map(family -> familyMapper.toUnionEdge(
                         family, childrenByFamily.getOrDefault(family.getId(), List.of())))
                 .toList();
@@ -1091,6 +1136,8 @@ public class FamilyServiceImpl implements FamilyService {
      */
     private FamilyResponse toResponse(Family family) {
         return familyMapper.toResponse(
-                family, familyChildRepository.findByFamilyIdOrderByBirthOrderAsc(family.getId()));
+                family, familyChildRepository.findByFamilyIdOrderByBirthOrderAsc(family.getId()).stream()
+                        .sorted(SIBLING_ORDER)
+                        .toList());
     }
 }

@@ -11,6 +11,7 @@ import { UnionDialog } from '@/features/family/components/union-dialog'
 import type { Family, FamilyChild } from '@/features/family/types'
 import { MediaToggle } from '@/features/media/components/media-card'
 import { PersonLink } from '@/features/person/components/person-link'
+import { PersonRole } from '@/features/person/components/person-role'
 import { CitationToggle } from '@/features/source/components/citation-card'
 import { ConfirmDeleteDialog } from '@/shared/components/confirm-delete-dialog'
 import { usePermissions } from '@/shared/hooks/use-permissions'
@@ -21,15 +22,17 @@ interface UnionPanelProps {
   family: Family
   // The person whose page this is, so the other partner can be named as the spouse.
   personId: number
+  // 1, 2, … among this person's unions when they have several; absent when they have one.
+  position?: number
 }
 
 /**
  * Shows one union of a person — the spouse, the marriage's events and the children — with its edit actions.
  *
- * @param props the union and the person whose page it is on
+ * @param props the union, the person whose page it is on, and its place among their unions
  * @returns the panel element
  */
-export function UnionPanel({ family, personId }: UnionPanelProps) {
+export function UnionPanel({ family, personId, position }: UnionPanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { mayEdit, mayDelete, mayAudit } = usePermissions()
@@ -47,9 +50,14 @@ export function UnionPanel({ family, personId }: UnionPanelProps) {
     <section className="space-y-3 rounded-md border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <Badge variant="outline">{t('family.unionN', { n: family.orderIndex + 1 })}</Badge>
+          {/* Counted on this page, as the stored position is one per union and can be wrong for the other partner. */}
+          {position != null && <Badge variant="outline">{t('family.unionN', { n: position })}</Badge>}
           <span>
-            {t('family.spouse')}: {spouseId ? <PersonLink id={spouseId} /> : t('family.unknownSpouse')}
+            {spouseId ? (
+              <PersonRole id={spouseId} role="spouse" link />
+            ) : (
+              `${t('family.spouse')}: ${t('family.unknownSpouse')}`
+            )}
           </span>
           <Badge variant="secondary">{t(`family.statuses.${family.status}`)}</Badge>
         </div>

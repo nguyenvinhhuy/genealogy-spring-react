@@ -6,14 +6,16 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { FuzzyDateInput } from '@/features/event/components/fuzzy-date-input'
+import { defaultUnionChoice, NEW_UNION } from '@/features/family/api'
+import { UnionSelect } from '@/features/family/components/union-select'
 import type { Family } from '@/features/family/types'
+import { GENDERS } from '@/features/person/lib/person-schema'
 import type { Gender } from '@/features/person/types'
 import { createSuggestion, SUGGESTION_QUERY_KEY } from '@/features/suggestion/api'
 import {
   buildSuggestionSchema,
   FIRST_UNION,
   KEEP_GENDER,
-  NEW_UNION,
   type SuggestionFormValues,
 } from '@/features/suggestion/lib/schemas'
 import type { SuggestionPayload } from '@/features/suggestion/types'
@@ -58,7 +60,7 @@ export function SuggestCard({ personId, families }: SuggestCardProps) {
   const schema = useMemo(() => buildSuggestionSchema(t), [t])
   // Bumped after a send, so the date fields, which keep their own text, start empty again.
   const [generation, setGeneration] = useState(0)
-  const { control, register, handleSubmit, reset, clearErrors, formState } = useForm<SuggestionFormValues>({
+  const { control, register, handleSubmit, reset, clearErrors, setError, formState } = useForm<SuggestionFormValues>({
     resolver: zodResolver(schema),
     // Not resolved here: the unions load after this form, and a default frozen then made every child a new union.
     defaultValues: DEFAULTS,
@@ -83,7 +85,23 @@ export function SuggestCard({ personId, families }: SuggestCardProps) {
         <CardTitle>{t('suggestion.cardTitle')}</CardTitle>
       </CardHeader>
       <CardContent>
-        <form className="space-y-4" onSubmit={voidSubmit(handleSubmit((values) => suggest.mutate(values)))}>
+        <form
+          className="space-y-4"
+          onSubmit={voidSubmit(
+            handleSubmit((values) => {
+              // Several unions: the member says which, as a guess filed the child under the wrong wife.
+              if (
+                values.kind === 'CREATE' &&
+                values.relation === 'CHILD' &&
+                chosenUnion(values.familyId, families) === ''
+              ) {
+                setError('familyId', { message: t('family.pickUnionRequired') })
+                return
+              }
+              suggest.mutate(values)
+            }),
+          )}
+        >
           <div className="space-y-2">
             <Label htmlFor={`suggest-kind-${personId}`}>{t('suggestion.what')}</Label>
             <Controller
@@ -140,21 +158,19 @@ export function SuggestCard({ personId, families }: SuggestCardProps) {
                     control={control}
                     name="familyId"
                     render={({ field }) => (
-                      <Select value={chosenUnion(field.value, families)} onValueChange={field.onChange}>
-                        <SelectTrigger id={`suggest-family-${personId}`} className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {families.map((family) => (
-                            <SelectItem key={family.id} value={String(family.id)}>
-                              {t('family.unionN', { n: family.orderIndex + 1 })}
-                            </SelectItem>
-                          ))}
-                          <SelectItem value={NEW_UNION}>{t('family.newSingleParentUnion')}</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <UnionSelect
+                        id={`suggest-family-${personId}`}
+                        families={families}
+                        personId={personId}
+                        value={chosenUnion(field.value, families)}
+                        onChange={field.onChange}
+                        invalid={formState.errors.familyId != null}
+                      />
                     )}
                   />
+                  {formState.errors.familyId && (
+                    <p className="text-destructive text-xs">{formState.errors.familyId.message}</p>
+                  )}
                 </div>
               )}
             </div>
@@ -165,10 +181,17 @@ export function SuggestCard({ personId, families }: SuggestCardProps) {
               <p className="text-muted-foreground text-xs">
                 {t(kind === 'UPDATE' ? 'suggestion.updateHint' : 'suggestion.createHint')}
               </p>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid items-start gap-2 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor={`suggest-surname-${personId}`}>{t('person.surname')}</Label>
-                  <Input id={`suggest-surname-${personId}`} {...register('surname')} />
+                  <Input
+                    id={`suggest-surname-${personId}`}
+                    aria-invalid={formState.errors.surname != null}
+                    {...register('surname')}
+                  />
+                  {formState.errors.surname && (
+                    <p className="text-destructive text-xs">{formState.errors.surname.message}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor={`suggest-middle-${personId}`}>{t('person.middleName')}</Label>
@@ -176,27 +199,39 @@ export function SuggestCard({ personId, families }: SuggestCardProps) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor={`suggest-given-${personId}`}>{t('person.givenName')}</Label>
-                  <Input id={`suggest-given-${personId}`} {...register('givenName')} />
+                  <Input
+                    id={`suggest-given-${personId}`}
+                    aria-invalid={formState.errors.givenName != null}
+                    {...register('givenName')}
+                  />
+                  {formState.errors.givenName && (
+                    <p className="text-destructive text-xs">{formState.errors.givenName.message}</p>
+                  )}
                 </div>
               </div>
-              {formState.errors.givenName && (
-                <p className="text-destructive text-xs">{formState.errors.givenName.message}</p>
-              )}
               <div className="space-y-2">
                 <Label htmlFor={`suggest-gender-${personId}`}>{t('person.gender')}</Label>
                 <Controller
                   control={control}
                   name="gender"
                   render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id={`suggest-gender-${personId}`} className="w-full">
-                        <SelectValue />
+                    // A new person has no "as recorded": the select shows its placeholder until a sex is chosen.
+                    <Select
+                      value={kind === 'CREATE' && field.value === KEEP_GENDER ? '' : field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger
+                        id={`suggest-gender-${personId}`}
+                        className="w-full"
+                        aria-invalid={formState.errors.gender != null}
+                      >
+                        <SelectValue placeholder={t('person.genderPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={KEEP_GENDER}>
-                          {t(kind === 'UPDATE' ? 'suggestion.keepGender' : 'person.genders.UNKNOWN')}
-                        </SelectItem>
-                        {(['MALE', 'FEMALE'] as const).map((gender) => (
+                        {kind === 'UPDATE' && (
+                          <SelectItem value={KEEP_GENDER}>{t('suggestion.keepGender')}</SelectItem>
+                        )}
+                        {(kind === 'UPDATE' ? (['MALE', 'FEMALE'] as const) : GENDERS).map((gender) => (
                           <SelectItem key={gender} value={gender}>
                             {t(`person.genders.${gender}`)}
                           </SelectItem>
@@ -205,6 +240,9 @@ export function SuggestCard({ personId, families }: SuggestCardProps) {
                     </Select>
                   )}
                 />
+                {formState.errors.gender && (
+                  <p className="text-destructive text-xs">{formState.errors.gender.message}</p>
+                )}
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Controller
@@ -258,17 +296,14 @@ export function SuggestCard({ personId, families }: SuggestCardProps) {
 }
 
 /**
- * Resolves the union select's value, so "not chosen yet" reads as the person's first union.
+ * Resolves the union select's value, so "not chosen yet" reads as the default for the person's unions.
  *
  * @param value what the form holds
  * @param families the person's unions
- * @returns the select value to show and send
+ * @returns the select value to show and send; empty while a person with several unions has not chosen
  */
 function chosenUnion(value: string, families: Family[]): string {
-  if (value !== FIRST_UNION) {
-    return value
-  }
-  return families[0] ? String(families[0].id) : NEW_UNION
+  return value !== FIRST_UNION ? value : defaultUnionChoice(families)
 }
 
 /**

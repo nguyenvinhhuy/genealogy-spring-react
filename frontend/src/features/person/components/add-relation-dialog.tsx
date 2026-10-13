@@ -8,8 +8,17 @@ import { toast } from 'sonner'
 
 import { createEvent } from '@/features/event/api'
 import { FuzzyDateInput } from '@/features/event/components/fuzzy-date-input'
-import { addRelation, invalidateFamilyQueries } from '@/features/family/api'
+import {
+  addRelation,
+  defaultUnionChoice,
+  invalidateFamilyQueries,
+  linkExisting,
+  NEW_UNION,
+} from '@/features/family/api'
+import { UnionSelect } from '@/features/family/components/union-select'
 import type { Family } from '@/features/family/types'
+import { DuplicateHint } from '@/features/person/components/duplicate-hint'
+import { chosenGender, GENDERS, NO_GENDER } from '@/features/person/lib/person-schema'
 import { buildRelationSchema, type RelationFormValues } from '@/features/person/lib/relation-schema'
 import { voidSubmit } from '@/shared/lib/forms'
 import { Button } from '@/shared/ui/button'
@@ -24,9 +33,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
-
-// Radix Select cannot hold an empty-string value, so "start a new union" needs a sentinel of its own.
-const NEW_UNION = 'new'
 
 /**
  * Writes the birth and death a new person was entered with, as the events the rest of the app reads.
@@ -54,6 +60,10 @@ async function recordLife(personId: number, values: RelationFormValues): Promise
 interface AddRelationDialogProps {
   personId: number
   families: Family[]
+  // What the form opens on: a child from the tree, where adding the next generation is the common case.
+  defaultKind?: 'SPOUSE' | 'CHILD'
+  // Named in the title, so it is plain whose spouse or child is being added.
+  personName?: string
 }
 
 /**
@@ -62,17 +72,17 @@ interface AddRelationDialogProps {
  * @param props the person being added to and their existing unions
  * @returns the dialog with its trigger button
  */
-export function AddRelationDialog({ personId, families }: AddRelationDialogProps) {
-  // Asks for a name and little else: entering people has to stay cheap or the tree dies at 30 (§6.1).
+export function AddRelationDialog({ personId, families, defaultKind = 'SPOUSE', personName }: AddRelationDialogProps) {
+  // Asks for họ, tên and giới tính and little else: entering people has to stay cheap or the tree dies at 30 (§6.1).
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const schema = useMemo(() => buildRelationSchema(t), [t])
 
   const defaults: RelationFormValues = {
-    kind: 'SPOUSE',
-    familyId: families[0] ? String(families[0].id) : NEW_UNION,
-    gender: 'UNKNOWN',
+    kind: defaultKind,
+    familyId: defaultUnionChoice(families),
+    gender: NO_GENDER,
     surname: '',
     middleName: '',
     givenName: '',
@@ -80,18 +90,44 @@ export function AddRelationDialog({ personId, families }: AddRelationDialogProps
     death: null,
     deceased: false,
   }
-  const { control, register, handleSubmit, reset, formState } = useForm<RelationFormValues>({
+  const { control, register, handleSubmit, reset, getValues, setError, formState } = useForm<RelationFormValues>({
     resolver: zodResolver(schema),
     defaultValues: defaults,
   })
   // useWatch rather than watch(): the compiler cannot memoise a component that calls watch().
   const kind = useWatch({ control, name: 'kind' })
+  const [surname, middleName, givenName] = useWatch({ control, name: ['surname', 'middleName', 'givenName'] })
+
+  // The person already on record, linked instead of entered a second time: one copy of a cụ, not two half-trees.
+  const reuse = useMutation({
+    mutationFn: (otherPersonId: number) => {
+      const familyId = getValues('familyId')
+      return linkExisting(personId, {
+        kind: getValues('kind'),
+        otherPersonId,
+        familyId: getValues('kind') === 'CHILD' && familyId !== NEW_UNION ? Number(familyId) : null,
+      })
+    },
+    onSuccess: async () => {
+      await invalidateFamilyQueries(queryClient)
+      toast.success(t('family.linked'))
+      setOpen(false)
+    },
+  })
+
+  const linkInstead = (otherPersonId: number) => {
+    if (getValues('kind') === 'CHILD' && getValues('familyId') === '') {
+      setError('familyId', { message: t('family.pickUnionRequired') })
+      return
+    }
+    reuse.mutate(otherPersonId)
+  }
 
   const mutation = useMutation({
     mutationFn: async (values: RelationFormValues) => {
       const added = await addRelation(personId, {
         kind: values.kind,
-        gender: values.gender,
+        gender: chosenGender(values.gender),
         names: [
           {
             type: 'BIRTH',
@@ -138,7 +174,9 @@ export function AddRelationDialog({ personId, families }: AddRelationDialogProps
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t('family.addRelation')}</DialogTitle>
+          <DialogTitle>
+            {personName ? t('family.addRelationFor', { name: personName }) : t('family.addRelation')}
+          </DialogTitle>
         </DialogHeader>
 
         <form className="space-y-4" onSubmit={voidSubmit(handleSubmit((values) => mutation.mutate(values)))}>
@@ -168,21 +206,19 @@ export function AddRelationDialog({ personId, families }: AddRelationDialogProps
                 control={control}
                 name="familyId"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="relation-family" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {families.map((family) => (
-                        <SelectItem key={family.id} value={String(family.id)}>
-                          {t('family.unionN', { n: family.orderIndex + 1 })}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value={NEW_UNION}>{t('family.newSingleParentUnion')}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <UnionSelect
+                    id="relation-family"
+                    families={families}
+                    personId={personId}
+                    value={field.value}
+                    onChange={field.onChange}
+                    invalid={formState.errors.familyId != null}
+                  />
                 )}
               />
+              {formState.errors.familyId && (
+                <p className="text-destructive text-xs">{formState.errors.familyId.message}</p>
+              )}
             </div>
           )}
 
@@ -193,11 +229,11 @@ export function AddRelationDialog({ personId, families }: AddRelationDialogProps
               name="gender"
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger id="relation-gender" className="w-full">
-                    <SelectValue />
+                  <SelectTrigger id="relation-gender" className="w-full" aria-invalid={formState.errors.gender != null}>
+                    <SelectValue placeholder={t('person.genderPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {(['MALE', 'FEMALE', 'UNKNOWN'] as const).map((gender) => (
+                    {GENDERS.map((gender) => (
                       <SelectItem key={gender} value={gender}>
                         {t(`person.genders.${gender}`)}
                       </SelectItem>
@@ -206,25 +242,60 @@ export function AddRelationDialog({ personId, families }: AddRelationDialogProps
                 </Select>
               )}
             />
+            {formState.errors.gender && (
+              <p className="text-destructive text-xs">{formState.errors.gender.message}</p>
+            )}
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 items-start gap-2">
             <div className="space-y-2">
               <Label htmlFor="relation-surname">{t('person.surname')}</Label>
-              <Input id="relation-surname" {...register('surname')} />
+              <Input
+                id="relation-surname"
+                aria-invalid={formState.errors.surname != null}
+                {...register('surname')}
+              />
+              {formState.errors.surname && (
+                <p className="text-destructive text-xs">{formState.errors.surname.message}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="relation-middle">{t('person.middleName')}</Label>
               <Input id="relation-middle" {...register('middleName')} />
+              {formState.errors.middleName && (
+                <p className="text-destructive text-xs">{formState.errors.middleName.message}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="relation-given">{t('person.givenName')}</Label>
-              <Input id="relation-given" {...register('givenName')} />
+              <Input
+                id="relation-given"
+                aria-invalid={formState.errors.givenName != null}
+                {...register('givenName')}
+              />
+              {formState.errors.givenName && (
+                <p className="text-destructive text-xs">{formState.errors.givenName.message}</p>
+              )}
             </div>
           </div>
-          {formState.errors.givenName && (
-            <p className="text-destructive text-xs">{formState.errors.givenName.message}</p>
-          )}
+
+          <DuplicateHint
+            surname={surname}
+            middleName={middleName}
+            givenName={givenName}
+            excludeIds={[personId]}
+            renderAction={(person) => (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={reuse.isPending}
+                onClick={() => linkInstead(person.id)}
+              >
+                {t('person.duplicateHint.useExisting')}
+              </Button>
+            )}
+          />
 
           <div className="grid gap-4">
             <Controller

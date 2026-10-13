@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.genealogy.audit.service.AuditService;
 import com.genealogy.common.exception.BadRequestException;
+import com.genealogy.common.exception.ConflictException;
 import com.genealogy.common.exception.ForbiddenException;
 import com.genealogy.common.exception.NotFoundException;
 import com.genealogy.common.exception.TooManyRequestsException;
@@ -25,6 +27,7 @@ import com.genealogy.member.dto.response.MemberSnapshot;
 import com.genealogy.member.mapper.MemberMapper;
 import com.genealogy.member.repository.MemberRepository;
 import com.genealogy.member.service.CredentialsChanged;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +50,7 @@ class MemberServiceImplTest {
 
     private static final String EMAIL = "admin@genealogy.vn";
     private static final String PASSWORD = "Admin@123";
+    private static final String BIENTAP = "bientap@genealogy.vn";
     // The ADMIN resetting someone else's password; never the account under test.
     private static final Long ACTOR = 7L;
 
@@ -266,7 +270,8 @@ class MemberServiceImplTest {
         when(memberRepository.findById(2L)).thenReturn(Optional.of(editor));
 
         MemberResponse updated = memberService.update(
-                ACTOR, Role.ADMIN, 2L, new UpdateMemberRequest("Biên tập", Role.MEMBER, true, "Thôi biên tập"));
+                ACTOR, Role.ADMIN, 2L,
+                new UpdateMemberRequest("Biên tập", BIENTAP, Role.MEMBER, true, "Thôi biên tập"));
 
         assertThat(updated.role()).isEqualTo(Role.MEMBER);
         // The old access token stops working at once, which is what the dialog tells the ADMIN (§8.12 #13).
@@ -281,7 +286,8 @@ class MemberServiceImplTest {
         Member editor = account(2L, Role.EDITOR);
         when(memberRepository.findById(2L)).thenReturn(Optional.of(editor));
 
-        memberService.update(ACTOR, Role.ADMIN, 2L, new UpdateMemberRequest("Tên mới", Role.EDITOR, true, null));
+        memberService.update(
+                ACTOR, Role.ADMIN, 2L, new UpdateMemberRequest("Tên mới", BIENTAP, Role.EDITOR, true, null));
 
         verify(events, never()).publishEvent(any());
     }
@@ -291,10 +297,10 @@ class MemberServiceImplTest {
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
 
         assertThatThrownBy(() -> memberService.update(
-                1L, Role.ADMIN, 1L, new UpdateMemberRequest("Quan tri vien", Role.ADMIN, false, null)))
+                1L, Role.ADMIN, 1L, new UpdateMemberRequest("Quan tri vien", EMAIL, Role.ADMIN, false, null)))
                 .isInstanceOf(BadRequestException.class);
         assertThatThrownBy(() -> memberService.update(
-                1L, Role.ADMIN, 1L, new UpdateMemberRequest("Quan tri vien", Role.EDITOR, true, null)))
+                1L, Role.ADMIN, 1L, new UpdateMemberRequest("Quan tri vien", EMAIL, Role.EDITOR, true, null)))
                 .isInstanceOf(BadRequestException.class);
         assertThat(member.isActive()).isTrue();
         assertThat(member.getRole()).isEqualTo(Role.ADMIN);
@@ -307,7 +313,7 @@ class MemberServiceImplTest {
         when(memberRepository.lockActiveByRole(Role.ADMIN)).thenReturn(List.of(member));
 
         assertThatThrownBy(() -> memberService.update(
-                ACTOR, Role.ADMIN, 1L, new UpdateMemberRequest("Quan tri vien", Role.ADMIN, false, null)))
+                ACTOR, Role.ADMIN, 1L, new UpdateMemberRequest("Quan tri vien", EMAIL, Role.ADMIN, false, null)))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("ít nhất một trưởng tộc");
     }
@@ -315,7 +321,7 @@ class MemberServiceImplTest {
     @Test
     void updateAndResetAreRefusedBelowAdmin() {
         assertThatThrownBy(() -> memberService.update(
-                ACTOR, Role.EDITOR, 2L, new UpdateMemberRequest("X", Role.ADMIN, true, null)))
+                ACTOR, Role.EDITOR, 2L, new UpdateMemberRequest("X", "x@x.vn", Role.ADMIN, true, null)))
                 .isInstanceOf(ForbiddenException.class);
         assertThatThrownBy(() -> memberService.resetPassword(ACTOR, Role.EDITOR, 2L, "Moi@12345"))
                 .isInstanceOf(ForbiddenException.class);
@@ -323,7 +329,7 @@ class MemberServiceImplTest {
 
     @Test
     void searchListsAccountsForAnAdmin() {
-        when(memberRepository.findAll(any(Pageable.class)))
+        when(memberRepository.findByDeletedAtIsNull(any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(member)));
 
         assertThat(memberService.search(PageRequest.of(0, 20), Role.ADMIN).getContent())
@@ -366,6 +372,82 @@ class MemberServiceImplTest {
         assertThat(member.getPasswordHash()).isEqualTo(oldHash);
     }
 
+    @Test
+    void updateChangesTheEmailLowerCasedAndEndsTheSessions() {
+        Member editor = account(2L, Role.EDITOR);
+        when(memberRepository.findById(2L)).thenReturn(Optional.of(editor));
+
+        MemberResponse updated = memberService.update(
+                ACTOR, Role.ADMIN, 2L, new UpdateMemberRequest("Biên tập", " Moi@Genealogy.VN ", Role.EDITOR, true,
+                        "Đổi hộp thư"));
+
+        assertThat(updated.email()).isEqualTo("moi@genealogy.vn");
+        // Whoever still holds the old mailbox, or a session opened with it, keeps no way in.
+        assertThat(editor.getCredentialVersion()).isEqualTo(1);
+        verify(events).publishEvent(new CredentialsChanged(2L));
+    }
+
+    @Test
+    void updateRefusesAnEmailAnotherAccountHolds() {
+        Member editor = account(2L, Role.EDITOR);
+        when(memberRepository.findById(2L)).thenReturn(Optional.of(editor));
+        when(memberRepository.existsByEmail(EMAIL)).thenReturn(true);
+
+        assertThatThrownBy(() -> memberService.update(
+                ACTOR, Role.ADMIN, 2L, new UpdateMemberRequest("Biên tập", EMAIL, Role.EDITOR, true, null)))
+                .isInstanceOf(ConflictException.class);
+        assertThat(editor.getEmail()).isEqualTo(BIENTAP);
+    }
+
+    @Test
+    void deleteHidesTheAccountFreesItsEmailAndKeepsTheRow() {
+        Member editor = account(2L, Role.EDITOR);
+        when(memberRepository.findById(2L)).thenReturn(Optional.of(editor));
+
+        memberService.delete(ACTOR, Role.ADMIN, 2L, "Đã rời họ");
+
+        assertThat(editor.isActive()).isFalse();
+        assertThat(editor.getDeletedAt()).isNotNull();
+        assertThat(editor.getEmail()).isEqualTo("deleted-2@account.invalid");
+        // The row is never removed: every revision this account wrote still resolves its name.
+        verify(memberRepository, never()).delete(any(Member.class));
+        verify(memberRepository, never()).deleteById(any());
+        verify(events).publishEvent(new CredentialsChanged(2L));
+        ArgumentCaptor<MemberSnapshot> before = ArgumentCaptor.forClass(MemberSnapshot.class);
+        verify(auditService).record(eq(AuditEntityType.MEMBER), eq(2L), eq(AuditAction.DELETE),
+                before.capture(), isNull(), eq(ACTOR), eq("Đã rời họ"));
+        assertThat(before.getValue().email()).isEqualTo(BIENTAP);
+    }
+
+    @Test
+    void aDeletedAccountIsNotFoundAgain() {
+        Member gone = account(2L, Role.EDITOR);
+        gone.setDeletedAt(Instant.now());
+        gone.setActive(false);
+        when(memberRepository.findById(2L)).thenReturn(Optional.of(gone));
+
+        assertThatThrownBy(() -> memberService.getById(2L)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> memberService.delete(ACTOR, Role.ADMIN, 2L, null))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void deleteRefusesOneselfTheLastAdminAndCallersBelowAdmin() {
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        when(memberRepository.lockActiveByRole(Role.ADMIN)).thenReturn(List.of(member));
+
+        assertThatThrownBy(() -> memberService.delete(1L, Role.ADMIN, 1L, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("chính mình");
+        assertThatThrownBy(() -> memberService.delete(ACTOR, Role.ADMIN, 1L, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("ít nhất một trưởng tộc");
+        assertThatThrownBy(() -> memberService.delete(ACTOR, Role.EDITOR, 1L, null))
+                .isInstanceOf(ForbiddenException.class);
+        assertThat(member.getDeletedAt()).isNull();
+        assertThat(member.isActive()).isTrue();
+    }
+
     /**
      * Builds an active account.
      *
@@ -377,7 +459,7 @@ class MemberServiceImplTest {
         Member account = new Member();
         account.setId(id);
         account.setFullName("Biên tập");
-        account.setEmail("bientap@genealogy.vn");
+        account.setEmail(BIENTAP);
         account.setPasswordHash(member.getPasswordHash());
         account.setRole(role);
         account.setActive(true);

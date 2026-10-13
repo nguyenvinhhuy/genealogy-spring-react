@@ -34,7 +34,7 @@ export async function createMember(request: CreateMemberRequest): Promise<Member
 }
 
 /**
- * Renames an account, changes its role or disables it, which signs it out everywhere when the access changes.
+ * Renames an account, changes its email or role, or disables it; any but a rename signs it out everywhere.
  *
  * @param memberId the account to change
  * @param request the account's new state
@@ -43,6 +43,16 @@ export async function createMember(request: CreateMemberRequest): Promise<Member
 export async function updateMember(memberId: number, request: UpdateMemberRequest): Promise<Member> {
   const response = await apiClient.put<Member>(`/members/${memberId}`, request)
   return response.data
+}
+
+/**
+ * Deletes an account by hiding it, which signs it out everywhere and keeps its name on the changes it made.
+ *
+ * @param memberId the account to delete
+ * @param changeNote why it is being deleted, or null
+ */
+export async function deleteMember(memberId: number, changeNote: string | null): Promise<void> {
+  await apiClient.delete(`/members/${memberId}`, { params: { changeNote: changeNote || undefined } })
 }
 
 /**

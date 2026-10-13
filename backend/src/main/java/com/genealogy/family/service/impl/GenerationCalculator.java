@@ -109,6 +109,31 @@ final class GenerationCalculator {
     }
 
     /**
+     * Lists the blood line of every connected family: each founder and everyone born of them.
+     *
+     * @param unions every union in the clan
+     * @param genders each person's recorded sex, used only to find the founder of each family line
+     * @return the people of the clan's own line, reached by birth links alone
+     */
+    static Set<Long> clanMembers(List<Union> unions, Map<Long, Gender> genders) {
+        Graph graph = Graph.of(unions);
+        Set<Long> clan = new HashSet<>();
+        Set<Long> seen = new HashSet<>();
+        for (Long personId : graph.everyone()) {
+            if (seen.add(personId)) {
+                Set<Long> component = graph.componentOf(personId);
+                seen.addAll(component);
+                // The same founder and the same birth-only walk `number` uses, so the book and đời never disagree.
+                Long founder = founderOf(graph, component, genders);
+                if (founder != null) {
+                    clan.addAll(graph.descendantsOf(founder));
+                }
+            }
+        }
+        return clan;
+    }
+
+    /**
      * Numbers one connected family, counting from its founder.
      *
      * @param graph the whole graph

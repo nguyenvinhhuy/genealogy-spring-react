@@ -1,6 +1,7 @@
 package com.genealogy.member.controller;
 
 import com.genealogy.common.security.AuthPrincipal;
+import com.genealogy.common.util.ChangeNotes;
 import com.genealogy.member.dto.request.ChangePasswordRequest;
 import com.genealogy.member.dto.request.CreateMemberRequest;
 import com.genealogy.member.dto.request.ResetPasswordRequest;
@@ -9,18 +10,21 @@ import com.genealogy.member.dto.response.MemberResponse;
 import com.genealogy.member.service.MemberService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Endpoints for app accounts. */
@@ -72,7 +76,7 @@ public class MemberController {
     }
 
     /**
-     * Renames an account, changes its role, or disables or enables it.
+     * Renames an account, changes its email or role, or disables or enables it.
      *
      * @param id the account to change
      * @param request the account's new state
@@ -86,6 +90,24 @@ public class MemberController {
             @Valid @RequestBody UpdateMemberRequest request,
             @AuthenticationPrincipal AuthPrincipal principal) {
         return memberService.update(principal.id(), principal.role(), id, request);
+    }
+
+    /**
+     * Deletes an account by hiding it, keeping its name on every change it made.
+     *
+     * @param id the account to delete
+     * @param changeNote why it was deleted, may be null
+     * @param principal the authenticated caller
+     * @return an empty 204 response
+     */
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Delete a member account")
+    public ResponseEntity<Void> delete(
+            @PathVariable Long id,
+            @RequestParam(required = false) @Size(max = ChangeNotes.MAX_LENGTH) String changeNote,
+            @AuthenticationPrincipal AuthPrincipal principal) {
+        memberService.delete(principal.id(), principal.role(), id, changeNote);
+        return ResponseEntity.noContent().build();
     }
 
     /**

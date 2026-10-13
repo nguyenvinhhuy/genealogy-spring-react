@@ -4,6 +4,7 @@ import com.genealogy.common.model.PersonNameType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 
 /**
  * One name in a person payload.
@@ -29,4 +30,19 @@ public record PersonNameRequest(
 
     // Longest tên the column holds.
     public static final int MAX_GIVEN_NAME = 50;
+
+    /**
+     * Reports whether the primary name of a list, or its first when none is flagged, carries a họ.
+     *
+     * @param names the names, may be null
+     * @return true when that name has a non-blank surname
+     */
+    public static boolean primaryHasSurname(List<PersonNameRequest> names) {
+        if (names == null || names.isEmpty()) {
+            return false;
+        }
+        PersonNameRequest primary = names.stream().filter(PersonNameRequest::primary).findFirst()
+                .orElse(names.getFirst());
+        return primary != null && primary.surname() != null && !primary.surname().isBlank();
+    }
 }

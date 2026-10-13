@@ -68,6 +68,7 @@ public class QualityServiceImpl implements QualityService {
         snapshot.unions().forEach(union -> checkOneUnion(snapshot, union, issues));
 
         issues.addAll(findDuplicates(snapshot));
+        issues.addAll(findMissingIdentity(snapshot));
         issues.sort(Comparator.comparing(QualityIssueResponse::severity));
         return issues;
     }
@@ -181,7 +182,7 @@ public class QualityServiceImpl implements QualityService {
      * @param issues the findings collected so far
      */
     private void checkOneUnion(Snapshot snapshot, UnionEdgeResponse union, List<QualityIssueResponse> issues) {
-        Span marriage = snapshot.unionSpan(union.familyId(), EventType.MARRIAGE);
+        Span marriage = snapshot.marriageSpan(union.familyId());
         if (marriage != null) {
             checkMarriageAge(snapshot, union, union.partner1Id(), union.partner2Id(), marriage, issues);
             checkMarriageAge(snapshot, union, union.partner2Id(), union.partner1Id(), marriage, issues);
@@ -352,11 +353,31 @@ public class QualityServiceImpl implements QualityService {
                     List<Long> sorted = group.stream().sorted().toList();
                     for (int i = 1; i < sorted.size(); i++) {
                         duplicates.add(snapshot.issue(
-                                IssueCode.POSSIBLE_DUPLICATE, sorted.get(i), sorted.get(0), null, Map.of()));
+                                IssueCode.POSSIBLE_DUPLICATE, sorted.get(i), sorted.getFirst(), null, Map.of()));
                     }
                 });
         duplicates.sort(Comparator.comparing(QualityIssueResponse::personId));
         return duplicates;
+    }
+
+    /**
+     * Finds people recorded with no họ, then people whose sex is unrecorded.
+     *
+     * @param snapshot the loaded clan
+     * @return one finding per missing field, lowest id first within each kind
+     */
+    private List<QualityIssueResponse> findMissingIdentity(Snapshot snapshot) {
+        // Required only in the forms (§6.1), so data entered before that or imported is listed here, never refused.
+        List<QualityIssueResponse> missing = new ArrayList<>();
+        snapshot.withoutSurname().stream()
+                .filter(snapshot.names()::containsKey)
+                .forEach(personId -> missing.add(snapshot.issue(IssueCode.MISSING_SURNAME, personId, null, null,
+                        Map.of())));
+        snapshot.names().keySet().stream()
+                .filter(personId -> snapshot.genderOf(personId) == Gender.UNKNOWN)
+                .forEach(personId -> missing.add(snapshot.issue(IssueCode.MISSING_GENDER, personId, null, null,
+                        Map.of())));
+        return missing;
     }
 
     /**
@@ -377,13 +398,14 @@ public class QualityServiceImpl implements QualityService {
     }
 
     /**
-     * Loads the whole clan through the three whole-graph projections.
+     * Loads the whole clan through the whole-graph projections.
      *
      * @return the snapshot every rule reads from
      */
     private Snapshot loadSnapshot() {
         // Every person, not only those with a dated event: a name-only double import is the commonest duplicate.
-        return Snapshot.of(eventService.findAllFacts(), familyService.findAllUnions(), personService.findAllNodes());
+        return Snapshot.of(eventService.findAllFacts(), familyService.findAllUnions(), personService.findAllNodes(),
+                personService.findIdsWithoutSurname());
     }
 
     /**
@@ -512,6 +534,7 @@ public class QualityServiceImpl implements QualityService {
      * @param unions every union in the clan
      * @param spans each subject's recorded dates by event type
      * @param birthYears each person's earliest recorded birth year
+     * @param withoutSurname the people whose primary name has no họ
      */
     private record Snapshot(
             Map<Long, String> names,
@@ -519,18 +542,23 @@ public class QualityServiceImpl implements QualityService {
             Map<Long, Integer> generations,
             List<UnionEdgeResponse> unions,
             Map<FactKey, List<Span>> spans,
-            Map<Long, Integer> birthYears) {
+            Map<Long, Integer> birthYears,
+            Set<Long> withoutSurname) {
 
         /**
-         * Indexes the three projections.
+         * Indexes the projections.
          *
          * @param facts every dated event
          * @param unions every union
          * @param nodes every person
+         * @param withoutSurname the people whose primary name has no họ
          * @return the snapshot
          */
         static Snapshot of(
-                List<EventFactResponse> facts, List<UnionEdgeResponse> unions, List<PersonNodeResponse> nodes) {
+                List<EventFactResponse> facts,
+                List<UnionEdgeResponse> unions,
+                List<PersonNodeResponse> nodes,
+                Set<Long> withoutSurname) {
             Map<Long, String> names = new LinkedHashMap<>();
             Map<Long, Gender> genders = new HashMap<>();
             Map<Long, Integer> generations = new HashMap<>();
@@ -557,7 +585,7 @@ public class QualityServiceImpl implements QualityService {
                     birthYears.merge(fact.subjectId(), fact.year(), Math::min);
                 }
             }
-            return new Snapshot(names, genders, generations, unions, spans, birthYears);
+            return new Snapshot(names, genders, generations, unions, spans, birthYears, withoutSurname);
         }
 
         /**
@@ -583,14 +611,14 @@ public class QualityServiceImpl implements QualityService {
         }
 
         /**
-         * Returns the span covering every recorded date of one kind of a union's events.
+         * Returns the span covering every recorded marriage date of a union.
          *
          * @param familyId the union
-         * @param type the event type
          * @return the span, or null when unrecorded
          */
-        Span unionSpan(Long familyId, EventType type) {
-            return Span.covering(spans.getOrDefault(new FactKey(EventSubjectType.FAMILY, familyId, type), List.of()));
+        Span marriageSpan(Long familyId) {
+            FactKey key = new FactKey(EventSubjectType.FAMILY, familyId, EventType.MARRIAGE);
+            return Span.covering(spans.getOrDefault(key, List.of()));
         }
 
         /**

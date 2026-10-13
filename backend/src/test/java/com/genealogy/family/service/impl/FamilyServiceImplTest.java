@@ -29,6 +29,8 @@ import com.genealogy.family.dto.request.FamilyChildUpdateRequest;
 import com.genealogy.family.dto.request.FamilyRequest;
 import com.genealogy.family.dto.request.LinkRelationRequest;
 import com.genealogy.family.dto.response.AddRelationResponse;
+import com.genealogy.family.dto.response.FamilyChildResponse;
+import com.genealogy.family.dto.response.FamilyResponse;
 import com.genealogy.family.mapper.FamilyMapper;
 import com.genealogy.family.repository.FamilyChildRepository;
 import com.genealogy.family.repository.FamilyRepository;
@@ -38,6 +40,7 @@ import com.genealogy.person.dto.response.PersonDetailResponse;
 import com.genealogy.person.service.PersonService;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +50,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Captor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -144,6 +148,35 @@ class FamilyServiceImplTest {
         familyService.recomputeGenerations();
         verify(personService).applyGenerations(generationsCaptor.capture());
         return generationsCaptor.getValue();
+    }
+
+    @Test
+    @DisplayName("a child's page finds the unions they are a child of, siblings in birth order then entry order")
+    void parentUnionsListTheChildsParentsWithSiblingsInOrder() {
+        family(10, 1L, 2L);
+        family(11, 1L, 3L);
+        child(10, 7L);
+        child(10, 5L);
+        child(10, 6L);
+        links.get(2).setBirthOrder(1);
+        lenient().when(familyChildRepository.findByChildId(5L))
+                .thenReturn(links.stream().filter(link -> link.getChildId() == 5L).toList());
+        lenient().when(familyRepository.findAllById(ArgumentMatchers.<Collection<Long>>any()))
+                .thenAnswer(call -> families.stream()
+                        .filter(family -> call.<Collection<Long>>getArgument(0).contains(family.getId()))
+                        .toList());
+        lenient().when(familyChildRepository.findByFamilyIdInOrderByBirthOrderAsc(
+                        ArgumentMatchers.<Collection<Long>>any()))
+                .thenAnswer(call -> links.stream()
+                        .filter(link -> call.<Collection<Long>>getArgument(0).contains(link.getFamilyId()))
+                        .toList());
+
+        List<FamilyResponse> parents = familyService.findParentUnions(5L);
+
+        assertThat(parents).extracting(FamilyResponse::id).containsExactly(10L);
+        // 6 has a recorded birth order and leads; 5 and 7 follow by who was recorded first, not by link order.
+        assertThat(parents.getFirst().children()).extracting(FamilyChildResponse::childId).containsExactly(6L, 5L, 7L);
+        assertThat(familyService.findParentUnions(99L)).isEmpty();
     }
 
     @Test

@@ -10,6 +10,7 @@ import { MEMBER_QUERY_KEY, updateMember } from '@/features/member/api'
 import { buildUpdateMemberSchema, ROLES, type UpdateMemberValues } from '@/features/member/lib/schemas'
 import type { Member } from '@/features/member/types'
 import { voidSubmit } from '@/shared/lib/forms'
+import { endSession } from '@/shared/lib/session'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -37,7 +38,7 @@ interface EditMemberDialogProps {
 }
 
 /**
- * Lets the clan head rename an account, change its role, or disable or enable it.
+ * Lets the clan head rename an account, change its email or role, or disable or enable it.
  *
  * @param props the account to edit, and whether it is the caller's own
  * @returns the dialog with its trigger button
@@ -49,6 +50,7 @@ export function EditMemberDialog({ member, isSelf }: EditMemberDialogProps) {
   const schema = useMemo(() => buildUpdateMemberSchema(t), [t])
   const defaults: UpdateMemberValues = {
     fullName: member.fullName,
+    email: member.email,
     role: member.role,
     active: member.active,
     changeNote: '',
@@ -65,14 +67,21 @@ export function EditMemberDialog({ member, isSelf }: EditMemberDialogProps) {
     mutationFn: (values: UpdateMemberValues) =>
       updateMember(member.id, {
         fullName: values.fullName,
+        email: values.email,
         role: values.role,
         active: values.active,
         changeNote: values.changeNote.trim() || null,
       }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: [MEMBER_QUERY_KEY] })
-      toast.success(t('member.updated', { name: member.fullName }))
+    onSuccess: async (updated) => {
       setOpen(false)
+      if (isSelf && updated.email !== member.email) {
+        // The server has ended every session of this account, this one included; only the cookie is left to clear.
+        await endSession()
+        toast.success(t('member.emailChangedSelf'))
+        return
+      }
+      await queryClient.invalidateQueries({ queryKey: [MEMBER_QUERY_KEY] })
+      toast.success(t('member.updated', { name: updated.fullName }))
     },
   })
 
@@ -104,6 +113,18 @@ export function EditMemberDialog({ member, isSelf }: EditMemberDialogProps) {
             {formState.errors.fullName && (
               <p className="text-destructive text-xs">{formState.errors.fullName.message}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`edit-member-email-${member.id}`}>{t('member.email')}</Label>
+            <Input
+              id={`edit-member-email-${member.id}`}
+              type="email"
+              autoComplete="off"
+              aria-invalid={formState.errors.email != null}
+              {...register('email')}
+            />
+            {formState.errors.email && <p className="text-destructive text-xs">{formState.errors.email.message}</p>}
           </div>
 
           <div className="space-y-2">

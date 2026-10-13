@@ -27,16 +27,41 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Query("SELECT p FROM Person p WHERE p.id = :id")
     Optional<Person> findForEdit(@Param("id") Long id);
 
+    /** How many words of a search box a query matches; a Vietnamese name rarely has more. */
+    int SEARCH_WORDS = 5;
+
+    // The very expression idx_person_names_full_trgm indexes (V9), so the planner can still use it.
+    String FULL_NAME = "immutable_unaccent(lower(coalesce(n.surname || ' ', '') || coalesce(n.middle_name || ' ', '')"
+            + " || n.given_name))";
+
+    // A word matches at the start of a word of the name, never inside one: "yen" must not find every "Nguyễn" (§4.3).
+    String WORD_1 = "(cast(:w1 AS text) IS NULL"
+            + " OR " + FULL_NAME + " LIKE immutable_unaccent(lower(cast(:w1 AS text))) || '%' ESCAPE '\\'"
+            + " OR " + FULL_NAME + " LIKE '% ' || immutable_unaccent(lower(cast(:w1 AS text))) || '%' ESCAPE '\\')";
+    String WORD_2 = "(cast(:w2 AS text) IS NULL"
+            + " OR " + FULL_NAME + " LIKE immutable_unaccent(lower(cast(:w2 AS text))) || '%' ESCAPE '\\'"
+            + " OR " + FULL_NAME + " LIKE '% ' || immutable_unaccent(lower(cast(:w2 AS text))) || '%' ESCAPE '\\')";
+    String WORD_3 = "(cast(:w3 AS text) IS NULL"
+            + " OR " + FULL_NAME + " LIKE immutable_unaccent(lower(cast(:w3 AS text))) || '%' ESCAPE '\\'"
+            + " OR " + FULL_NAME + " LIKE '% ' || immutable_unaccent(lower(cast(:w3 AS text))) || '%' ESCAPE '\\')";
+    String WORD_4 = "(cast(:w4 AS text) IS NULL"
+            + " OR " + FULL_NAME + " LIKE immutable_unaccent(lower(cast(:w4 AS text))) || '%' ESCAPE '\\'"
+            + " OR " + FULL_NAME + " LIKE '% ' || immutable_unaccent(lower(cast(:w4 AS text))) || '%' ESCAPE '\\')";
+    String WORD_5 = "(cast(:w5 AS text) IS NULL"
+            + " OR " + FULL_NAME + " LIKE immutable_unaccent(lower(cast(:w5 AS text))) || '%' ESCAPE '\\'"
+            + " OR " + FULL_NAME + " LIKE '% ' || immutable_unaccent(lower(cast(:w5 AS text))) || '%' ESCAPE '\\')";
+
     // Every filter is optional and ANDed; EXISTS, not a join: joining every name multiplies rows and skews the count.
+    // Every word must match the same name, in any order, so "An Nguyễn" finds "Nguyễn Văn An" too.
     String SEARCH_WHERE = """
-            WHERE (cast(:query AS text) IS NULL OR EXISTS (
+            WHERE (cast(:w1 AS text) IS NULL OR EXISTS (
                       SELECT 1 FROM person_names n
                       WHERE n.person_id = p.id
                         AND (n.is_primary OR NOT p.living OR :alternateNames)
-                        AND immutable_unaccent(lower(
-                                coalesce(n.surname || ' ', '') || coalesce(n.middle_name || ' ', '')
-                                || n.given_name))
-                            LIKE '%' || immutable_unaccent(lower(cast(:query AS text))) || '%' ESCAPE '\\'))
+            """
+            + " AND " + WORD_1 + " AND " + WORD_2 + " AND " + WORD_3 + " AND " + WORD_4 + " AND " + WORD_5 + "))"
+            + """
+
               AND (:byBranch = FALSE OR p.branch_id IN (:branchIds))
               AND (cast(:generation AS int) IS NULL OR p.generation = :generation)
               AND (cast(:living AS boolean) IS NULL OR p.living = :living)
@@ -46,7 +71,12 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     /**
      * Finds persons matching every filter that was given, ignoring accents and case (F20).
      *
-     * @param query accent-insensitive search across all of a person's names, or null
+     * @param w1 the first word typed, escaped for LIKE, or null when nothing was typed
+     * @param w2 the second word, or null
+     * @param w3 the third word, or null
+     * @param w4 the fourth word, or null
+     * @param w5 the fifth word, or null
+     * @param lastWord the last word typed, ranked first when it begins the tên gọi, or null
      * @param byBranch whether to narrow the result to {@code branchIds}
      * @param branchIds the chi to match, subtree included; never empty
      * @param generation generation filter, or null
@@ -64,8 +94,10 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
                     LEFT JOIN person_names pn ON pn.person_id = p.id AND pn.is_primary
                     """
                     + SEARCH_WHERE
-                    // Vietnamese convention (CLAUDE.md §5.2): by tên, then tên đệm, then họ — never by họ.
-                    + " ORDER BY pn.given_name, pn.middle_name NULLS FIRST, pn.surname NULLS FIRST, p.id",
+                    // A match on the tên gọi first, as "Yến" is a tên; then the Vietnamese order of §5.2, never by họ.
+                    + " ORDER BY CASE WHEN immutable_unaccent(lower(pn.given_name))"
+                    + " LIKE immutable_unaccent(lower(cast(:lastWord AS text))) || '%' ESCAPE '\\' THEN 0 ELSE 1 END,"
+                    + " pn.given_name, pn.middle_name NULLS FIRST, pn.surname NULLS FIRST, p.id",
             countQuery = """
                     SELECT count(*) FROM persons p
                     LEFT JOIN person_names pn ON pn.person_id = p.id AND pn.is_primary
@@ -73,7 +105,12 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
                     + SEARCH_WHERE,
             nativeQuery = true)
     Page<Person> search(
-            @Param("query") String query,
+            @Param("w1") String w1,
+            @Param("w2") String w2,
+            @Param("w3") String w3,
+            @Param("w4") String w4,
+            @Param("w5") String w5,
+            @Param("lastWord") String lastWord,
             @Param("byBranch") boolean byBranch,
             @Param("branchIds") Collection<Long> branchIds,
             @Param("generation") Integer generation,
@@ -90,6 +127,15 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
      */
     @Query("SELECT DISTINCT p FROM Person p LEFT JOIN FETCH p.names ORDER BY p.id")
     List<Person> findAllWithNames();
+
+    /**
+     * Lists the people whose primary name has no họ, or who have no primary name at all.
+     *
+     * @return their ids, lowest first
+     */
+    @Query("SELECT p.id FROM Person p LEFT JOIN p.names n ON n.primary = true "
+            + "WHERE n.surname IS NULL OR TRIM(n.surname) = '' ORDER BY p.id")
+    List<Long> findIdsWithoutSurname();
 
     /**
      * Counts the people recorded in one chi, not counting its sub-branches.

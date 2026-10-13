@@ -22,6 +22,16 @@ class TextKeysTest {
     }
 
     @Test
+    @DisplayName("a search box splits into escaped words, padded to a fixed count, extra words dropped")
+    void searchWordsAreSplitEscapedAndPadded() {
+        assertThat(LikePattern.words("  Nguyễn   Văn  An ", 5)).containsExactly("Nguyễn", "Văn", "An", null, null);
+        assertThat(LikePattern.words("100%_x", 2)).containsExactly("100\\%\\_x", null);
+        assertThat(LikePattern.words("a b c d e f", 5)).containsExactly("a", "b", "c", "d", "e");
+        assertThat(LikePattern.words(null, 2)).containsExactly(null, null);
+        assertThat(LikePattern.words("   ", 1)).containsExactly((String) null);
+    }
+
+    @Test
     @DisplayName("the search key drops every mark, đ included, the way the database's unaccent does")
     void searchKeyMatchesUnaccent() {
         assertThat(SearchKey.of("  Đỗ  Văn Đức ")).isEqualTo("do van duc");

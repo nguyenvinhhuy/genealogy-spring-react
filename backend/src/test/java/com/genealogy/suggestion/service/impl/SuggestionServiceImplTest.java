@@ -214,7 +214,7 @@ class SuggestionServiceImplTest {
 
         SuggestionResponse response = suggestions.create(
                 new SuggestionRequest(SuggestionTargetType.PERSON, null, SuggestionKind.CREATE,
-                        new SuggestedPerson(List.of(name("Bình", false)), null, year(1950), null,
+                        new SuggestedPerson(List.of(name("Bình", false)), Gender.UNKNOWN, year(1950), null,
                                 new SuggestedAnchor(PERSON, AddRelationRequest.Kind.CHILD, null)),
                         "bà nội kể còn một cụ nữa"),
                 SUGGESTER);
@@ -228,6 +228,26 @@ class SuggestionServiceImplTest {
         assertThat(response.proposal().birth()).isEqualTo("1950");
         verify(auditService).record(eq(AuditEntityType.SUGGESTION), eq(5L), eq(AuditAction.CREATE), isNull(),
                 any(), eq(SUGGESTER), isNull());
+    }
+
+    @Test
+    @DisplayName("a new person needs a họ and a chosen sex, as the person form does (§6.1)")
+    void refusesANewPersonWithoutSurnameOrSex() {
+        SuggestedAnchor anchor = new SuggestedAnchor(PERSON, AddRelationRequest.Kind.CHILD, null);
+        PersonNameRequest noSurname = new PersonNameRequest(PersonNameType.BIRTH, " ", null, "Bình", true);
+        assertThatThrownBy(() -> suggestions.create(
+                        new SuggestionRequest(SuggestionTargetType.PERSON, null, SuggestionKind.CREATE,
+                                new SuggestedPerson(List.of(noSurname), Gender.MALE, null, null, anchor), "vì sao"),
+                        SUGGESTER))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("họ");
+        assertThatThrownBy(() -> suggestions.create(
+                        new SuggestionRequest(SuggestionTargetType.PERSON, null, SuggestionKind.CREATE,
+                                new SuggestedPerson(List.of(name("Bình", true)), null, null, null, anchor), "vì sao"),
+                        SUGGESTER))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("giới tính");
+        verify(suggestionRepository, never()).saveAndFlush(any());
     }
 
     @Test

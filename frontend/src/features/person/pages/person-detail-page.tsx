@@ -10,6 +10,7 @@ import { fetchEvents } from '@/features/event/api'
 import { EventDialog } from '@/features/event/components/event-dialog'
 import { EventList } from '@/features/event/components/event-list'
 import { fetchFamiliesOf } from '@/features/family/api'
+import { ParentsPanel } from '@/features/family/components/parents-panel'
 import { UnionPanel } from '@/features/family/components/union-panel'
 import { fetchGrave } from '@/features/grave/api'
 import { GraveCard } from '@/features/grave/components/grave-card'
@@ -234,6 +235,7 @@ export function PersonDetailPage() {
               )}
             </CardHeader>
             <CardContent className="space-y-3">
+              <ParentsPanel key={`parents-${person.id}`} personId={person.id} />
               {familiesQuery.isLoading && <p className="text-muted-foreground text-sm">{t('common.loading')}</p>}
               {familiesQuery.isError && (
                 <p className="text-destructive text-sm">
@@ -243,8 +245,13 @@ export function PersonDetailPage() {
               {familiesQuery.isSuccess && families.length === 0 && (
                 <p className="text-muted-foreground text-sm">{t('person.noRelations')}</p>
               )}
-              {families.map((family) => (
-                <UnionPanel key={family.id} family={family} personId={person.id} />
+              {families.map((family, index) => (
+                <UnionPanel
+                  key={family.id}
+                  family={family}
+                  personId={person.id}
+                  position={families.length > 1 ? index + 1 : undefined}
+                />
               ))}
             </CardContent>
           </Card>

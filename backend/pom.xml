@@ -64,6 +64,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Spring 7 is @NullMarked; declared because overrides of its handlers carry its @NonNull. -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+        </dependency>
 
         <!-- Database and migration.
              Spring Boot 4 splits auto-configuration into per-technology modules;

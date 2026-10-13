@@ -143,6 +143,23 @@ class GenerationCalculatorTest {
     }
 
     @Test
+    @DisplayName("the clan is the founder and their birth line, not a wife, her parents, or a con nuôi")
+    void clanMembersFollowBirthLinksFromTheFounder() {
+        men(1L, 3L, 20L);
+        women(2L, 21L, 4L);
+        // 1 and 2 have son 3, who married 4; 2's parents are 20 and 21; 1 also adopted 5, who has a son 6.
+        List<Union> unions = List.of(
+                union(1L, 2L, 3L), union(3L, 4L, 7L), union(20L, 21L, 2L), adopting(1L, null, 5L), union(5L, null, 6L));
+
+        assertThat(GenerationCalculator.clanMembers(unions, genders)).containsExactlyInAnyOrder(1L, 3L, 7L);
+        // A second, unconnected family has its own founder and line.
+        men(40L);
+        List<Union> twoFamilies = List.of(union(1L, 2L, 3L), union(40L, null, 41L));
+        assertThat(GenerationCalculator.clanMembers(twoFamilies, genders)).containsExactlyInAnyOrder(1L, 3L, 40L, 41L);
+        assertThat(GenerationCalculator.clanMembers(List.of(), genders)).isEmpty();
+    }
+
+    @Test
     @DisplayName("a con nuôi is numbered one below the adoptive parent and never becomes the founder")
     void adoptedChildIsPlacedBesideTheLineNotInIt() {
         men(1L, 2L, 3L);

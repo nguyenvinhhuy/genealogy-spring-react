@@ -80,6 +80,22 @@ const MAX_NAME_LENGTH = 100
 const MAX_EMAIL_LENGTH = 255
 
 /**
+ * Builds the email field of the account forms.
+ *
+ * @param t the translation function
+ * @returns the field schema
+ */
+function buildEmailField(t: TFunction) {
+  // Trimmed and lower-cased here as the server stores it, so "An@x.vn " is not refused as malformed.
+  return z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(MAX_EMAIL_LENGTH, t('common.tooLong', { max: MAX_EMAIL_LENGTH }))
+    .pipe(z.email(t('member.validation.emailInvalid')))
+}
+
+/**
  * Builds the account-creation schema with translated messages.
  *
  * @param t the translation function
@@ -93,13 +109,7 @@ export function buildCreateMemberSchema(t: TFunction) {
         .trim()
         .min(1, t('member.validation.nameRequired'))
         .max(MAX_NAME_LENGTH, t('common.tooLong', { max: MAX_NAME_LENGTH })),
-      // Trimmed and lower-cased here as the server stores it, so "An@x.vn " is not refused as malformed.
-      email: z
-        .string()
-        .trim()
-        .toLowerCase()
-        .max(MAX_EMAIL_LENGTH, t('common.tooLong', { max: MAX_EMAIL_LENGTH }))
-        .pipe(z.email(t('member.validation.emailInvalid'))),
+      email: buildEmailField(t),
       role: z.enum(ROLES),
       newPassword: buildNewPasswordField(t),
       confirmPassword: z.string(),
@@ -126,6 +136,7 @@ export function buildUpdateMemberSchema(t: TFunction) {
       .trim()
       .min(1, t('member.validation.nameRequired'))
       .max(MAX_NAME_LENGTH, t('common.tooLong', { max: MAX_NAME_LENGTH })),
+    email: buildEmailField(t),
     role: z.enum(ROLES),
     active: z.boolean(),
     changeNote: buildChangeNoteField(t),

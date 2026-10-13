@@ -2,6 +2,7 @@ package com.genealogy.person.controller;
 
 import com.genealogy.common.security.AuthPrincipal;
 import com.genealogy.common.util.ChangeNotes;
+import com.genealogy.common.web.ManualEntry;
 import com.genealogy.person.dto.request.PersonRequest;
 import com.genealogy.person.dto.response.PersonDetailResponse;
 import com.genealogy.person.dto.response.PersonNodeResponse;
@@ -11,6 +12,7 @@ import com.genealogy.purge.service.PurgeService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.groups.Default;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -76,7 +78,8 @@ public class PersonController {
     @PostMapping
     @Operation(summary = "Create a person")
     public ResponseEntity<PersonDetailResponse> create(
-            @Valid @RequestBody PersonRequest request, @AuthenticationPrincipal AuthPrincipal principal) {
+            @Validated({Default.class, ManualEntry.class}) @RequestBody PersonRequest request,
+            @AuthenticationPrincipal AuthPrincipal principal) {
         return ResponseEntity.status(HttpStatus.CREATED).body(personService.create(request, principal.id()));
     }
 

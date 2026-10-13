@@ -36,6 +36,34 @@ export async function invalidateFamilyQueries(queryClient: QueryClient): Promise
   await Promise.all(AFFECTED_BY_A_LINK.map((key) => queryClient.invalidateQueries({ queryKey: [key] })))
 }
 
+// The union select's value for "a new one-parent union", as Radix Select cannot hold an empty string.
+export const NEW_UNION = 'new'
+
+/**
+ * Picks the union a new child joins until the member chooses another.
+ *
+ * @param families the parent's unions
+ * @returns the only union, a new one-parent union when there is none, or '' so a member with several must choose
+ */
+export function defaultUnionChoice(families: Family[]): string {
+  // Guessing the first of several unions filed children under the wrong wife; with one there is nothing to guess.
+  if (families.length === 1) {
+    return String(families[0].id)
+  }
+  return families.length === 0 ? NEW_UNION : ''
+}
+
+/**
+ * Lists the unions one person is a child of, with the siblings in each.
+ *
+ * @param personId the person id
+ * @returns the unions that person was born or brought into
+ */
+export async function fetchParentFamiliesOf(personId: number): Promise<Family[]> {
+  const response = await apiClient.get<Family[]>('/families/parents', { params: { personId } })
+  return response.data
+}
+
 /**
  * Lists every union one person belongs to, vợ cả first.
  *

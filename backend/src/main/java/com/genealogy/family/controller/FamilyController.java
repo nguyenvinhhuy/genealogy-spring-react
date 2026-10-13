@@ -48,6 +48,19 @@ public class FamilyController {
     }
 
     /**
+     * Lists the unions one person is a child of.
+     *
+     * @param personId the person id
+     * @return the unions that person is a child of
+     */
+    @GetMapping("/parents")
+    @Operation(summary = "List the unions a person is a child of")
+    public List<FamilyResponse> findParentUnions(@RequestParam Long personId) {
+        // Structure only, like the person's own unions (§3.6): a parent's living details stay behind their own guards.
+        return familyService.findParentUnions(personId);
+    }
+
+    /**
      * Returns one union.
      *
      * @param id family id

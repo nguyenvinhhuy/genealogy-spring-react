@@ -29,6 +29,7 @@ import com.genealogy.person.service.PersonService;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -75,11 +76,17 @@ public class PersonServiceImpl implements PersonService {
         }
         boolean restrict = ids != null;
         boolean byBranch = branchIds != null;
-        String query = LikePattern.orNull(criteria.query());
+        List<String> words = LikePattern.words(criteria.query(), PersonRepository.SEARCH_WORDS);
+        String lastWord = words.stream().filter(Objects::nonNull).reduce((first, second) -> second).orElse(null);
 
         return personRepository
                 .search(
-                        query,
+                        words.get(0),
+                        words.get(1),
+                        words.get(2),
+                        words.get(3),
+                        words.get(4),
+                        lastWord,
                         byBranch,
                         // IN () is not valid SQL, so an unused restriction still needs a value to bind.
                         byBranch ? branchIds : List.of(-1L),
@@ -327,6 +334,16 @@ public class PersonServiceImpl implements PersonService {
     @Override
     public List<PersonNodeResponse> findAllNodes() {
         return personRepository.findAllWithNames().stream().map(personMapper::toNode).toList();
+    }
+
+    /**
+     * Lists the people recorded with no họ on their primary name, for the data-quality page.
+     *
+     * @return their ids, lowest first
+     */
+    @Override
+    public Set<Long> findIdsWithoutSurname() {
+        return new LinkedHashSet<>(personRepository.findIdsWithoutSurname());
     }
 
     /**

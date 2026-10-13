@@ -88,7 +88,7 @@
   },
   "member": {
     "pageTitle": "Tài khoản",
-    "subtitle": "Những người được đăng nhập vào gia phả. Trưởng tộc mở tài khoản, đổi vai trò, khoá, và đặt lại mật khẩu cho ai quên ở đây.",
+    "subtitle": "Những người được đăng nhập vào gia phả. Trưởng tộc mở tài khoản, đổi vai trò, khoá, xoá, và đặt lại mật khẩu cho ai quên ở đây.",
     "create": "Thêm tài khoản",
     "createHint": "Mật khẩu đầu tiên hãy báo tận tay cho người đó; họ đổi được sau khi đăng nhập.",
     "created": "Đã mở tài khoản cho {{name}}.",
@@ -96,8 +96,8 @@
     "confirmFirstPassword": "Nhập lại mật khẩu đầu tiên",
     "edit": "Sửa",
     "editTitle": "Sửa tài khoản của {{name}}",
-    "editHint": "Đổi vai trò hay khoá tài khoản sẽ đăng xuất người này khỏi mọi thiết bị.",
-    "editSelfHint": "Đây là tài khoản của bạn: không tự đổi vai trò hay tự khoá được, kẻo dòng họ không còn ai quản lý.",
+    "editHint": "Đổi email, vai trò hay khoá tài khoản sẽ đăng xuất người này khỏi mọi thiết bị.",
+    "editSelfHint": "Đây là tài khoản của bạn: không tự đổi vai trò hay tự khoá được, kẻo dòng họ không còn ai quản lý. Đổi email thì bạn sẽ phải đăng nhập lại bằng email mới.",
     "updated": "Đã lưu tài khoản của {{name}}.",
     "roleHint": {
       "MEMBER": "Thành viên: con cháu xem gia phả và gửi đề xuất sửa.",
@@ -129,7 +129,12 @@
       "emailInvalid": "Email không hợp lệ",
       "mismatch": "Hai lần nhập mật khẩu mới không khớp",
       "sameAsCurrent": "Mật khẩu mới phải khác mật khẩu hiện tại"
-    }
+    },
+    "emailChangedSelf": "Đã đổi email. Hãy đăng nhập lại bằng email mới.",
+    "delete": "Xoá",
+    "deleteTitle": "Xoá tài khoản của {{name}}?",
+    "deleteDescription": "Người này sẽ không đăng nhập được nữa và biến khỏi danh sách. Những thay đổi họ đã làm trong gia phả vẫn ghi tên họ. Email được giải phóng để mở tài khoản mới nếu cần. Không hoàn tác được.",
+    "deleted": "Đã xoá tài khoản của {{name}}."
   },
   "person": {
     "title": "Nhân khẩu",
@@ -163,7 +168,9 @@
     "deleteDescription": "Các sự kiện, ảnh, dẫn chứng và đề xuất về người này cũng bị xoá. Lịch sử sửa đổi vẫn được giữ lại.",
     "deleted": "Đã xoá khỏi gia phả",
     "validation": {
-      "givenNameRequired": "Cần ít nhất một tên"
+      "givenNameRequired": "Cần nhập tên",
+      "surnameRequired": "Cần nhập họ",
+      "genderRequired": "Hãy chọn giới tính: Nam, Nữ hoặc Chưa rõ"
     },
     "relations": "Quan hệ",
     "noRelations": "Chưa có quan hệ nào",
@@ -178,7 +185,7 @@
     "genders": {
       "MALE": "Nam",
       "FEMALE": "Nữ",
-      "UNKNOWN": "Không rõ"
+      "UNKNOWN": "Chưa rõ"
     },
     "nameTypes": {
       "BIRTH": "Tên khai sinh",
@@ -188,7 +195,33 @@
       "THUY": "Thụy hiệu",
       "SAINT": "Tên thánh",
       "ALIAS": "Biệt danh"
-    }
+    },
+    "roles": {
+      "spouse": {
+        "MALE": "Chồng",
+        "FEMALE": "Vợ",
+        "UNKNOWN": "Vợ/chồng"
+      },
+      "parent": {
+        "MALE": "Cha",
+        "FEMALE": "Mẹ",
+        "UNKNOWN": "Cha/mẹ"
+      }
+    },
+    "picker": {
+      "placeholder": "Bấm để tìm người",
+      "typeToSearch": "Gõ tên để tìm, không cần dấu",
+      "searching": "Đang tìm…",
+      "noMatch": "Không tìm thấy ai",
+      "more": "Còn người khác khớp, gõ thêm để thu hẹp"
+    },
+    "duplicateHint": {
+      "title": "Trong gia phả đã có người tên giống",
+      "hint": "Nếu là cùng một người, hãy dùng người đã có thay vì tạo thêm một bản trùng.",
+      "open": "Mở trang",
+      "useExisting": "Dùng người này"
+    },
+    "genderPlaceholder": "Chọn giới tính"
   },
   "family": {
     "spouse": "Vợ/chồng",
@@ -252,7 +285,14 @@
     "validation": {
       "orderNumber": "Thứ tự phải là số từ 0 trở lên",
       "birthOrder": "Thứ tự sinh phải là số từ 1 trở lên"
-    }
+    },
+    "pickUnion": "Chọn cuộc hôn nhân",
+    "pickUnionRequired": "Hãy chọn người con thuộc cuộc hôn nhân nào",
+    "unknownSpouseUnion": "Chưa rõ vợ/chồng",
+    "parents": "Cha mẹ",
+    "noParents": "Chưa ghi cha mẹ",
+    "addRelationFor": "Thêm quan hệ cho {{name}}",
+    "linkExistingFor": "Nối {{name}} với người có sẵn"
   },
   "event": {
     "title": "Sự kiện",
@@ -321,7 +361,9 @@
       "MARRIED_TOO_YOUNG": "Kết hôn khi mới {{age}} tuổi",
       "IMPLAUSIBLE_LIFESPAN": "Thọ {{years}} tuổi — khó tin",
       "CHILD_BORN_BEFORE_MARRIAGE": "Sinh trước ngày cưới của cha mẹ",
-      "POSSIBLE_DUPLICATE": "Có thể trùng với {{related}}"
+      "POSSIBLE_DUPLICATE": "Có thể trùng với {{related}}",
+      "MISSING_SURNAME": "Chưa ghi họ ở tên chính",
+      "MISSING_GENDER": "Chưa ghi giới tính"
     },
     "severityCount": "{{label}}: {{n}}"
   },
@@ -656,7 +698,7 @@
     "truncatedAbove": "Còn các đời trên ở ngoài phạm vi đang xem — tăng số đời để xem thêm.",
     "truncatedBelow": "Còn con cháu ở ngoài phạm vi đang xem — tăng số đời để xem thêm.",
     "hint": "Kéo để di chuyển, cuộn để phóng to. Bấm vào một tên để lấy người đó làm trung tâm.",
-    "legend": "Nét đứt: con nuôi, con riêng hoặc con nuôi dưỡng. Khung nét đứt có ↺: người đã vẽ ở chỗ khác trên sơ đồ. Vòng tròn đánh số: con của cuộc hôn nhân nào.",
+    "legend": "Dòng đậm: người trong dòng họ. Vợ/Chồng: vợ hoặc chồng của người ở tâm; Dâu/Rể: người lấy con cháu trong dòng. Nét đứt và chữ nghiêng: con nuôi, con riêng hoặc con nuôi dưỡng. Khung nét đứt có ↺: người đã vẽ ở chỗ khác trên sơ đồ. Vòng tròn đánh số: con của cuộc hôn nhân nào.",
     "unknownSpouse": "chưa rõ vợ/chồng",
     "canvasLabel": "Sơ đồ cây phả hệ",
     "fanLabel": "Sơ đồ quạt tổ tiên",
@@ -665,6 +707,27 @@
       "ANCESTORS": "Cây tổ tiên",
       "HOURGLASS": "Đồng hồ cát",
       "FAN": "Quạt tổ tiên"
+    },
+    "inLaw": {
+      "MALE": "Rể",
+      "FEMALE": "Dâu",
+      "UNKNOWN": "Dâu/rể"
+    },
+    "childLink": {
+      "BIRTH": "con đẻ",
+      "ADOPTED": "con nuôi",
+      "STEP": "con riêng",
+      "FOSTER": "con nuôi dưỡng"
+    },
+    "export": {
+      "button": "Xuất sơ đồ",
+      "png": "Tải ảnh PNG",
+      "svg": "Tải file SVG",
+      "print": "In hoặc lưu PDF",
+      "printTitle": "Cây phả hệ — {{name}}",
+      "nothing": "Chưa có sơ đồ để xuất",
+      "failed": "Không tạo được ảnh, hãy thử tải file SVG",
+      "popupBlocked": "Trình duyệt đã chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại."
     }
   },
   "common": {
@@ -689,7 +752,7 @@
   },
   "place": {
     "title": "Nơi chốn",
-    "subtitle": "Thôn trong xã, xã trong huyện, huyện trong tỉnh — một địa danh đổi tên thì sửa một lần, mọi sự kiện ở đó đổi theo",
+    "subtitle": "Đã có sẵn 34 tỉnh, thành và các xã, phường hiện nay. Địa danh cũ (huyện, tổng, làng) thì thêm tay: một địa danh đổi tên thì sửa một lần, mọi sự kiện ở đó đổi theo",
     "search": "Tìm nơi chốn",
     "searchPlaceholder": "Tìm theo tên — không cần dấu",
     "none": "Không ghi nơi chốn",
@@ -718,7 +781,11 @@
     "validation": {
       "nameRequired": "Cần nhập tên nơi chốn",
       "nameTooLong": "Tối đa 200 ký tự"
-    }
+    },
+    "expand": "Mở {{name}}",
+    "collapse": "Thu gọn {{name}}",
+    "childCount": "{{count}} nơi",
+    "tooMany": "Đang hiện {{shown}} trong {{total}} nơi khớp. Gõ cụ thể hơn để thu hẹp."
   },
   "branch": {
     "title": "Chi / phái / nhánh",

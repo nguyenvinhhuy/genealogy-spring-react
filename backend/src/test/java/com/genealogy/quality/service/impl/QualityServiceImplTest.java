@@ -3,6 +3,7 @@ package com.genealogy.quality.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 
 import com.genealogy.common.model.EventSubjectType;
 import com.genealogy.common.model.EventType;
@@ -23,6 +24,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
@@ -436,7 +438,9 @@ class QualityServiceImplTest {
     @Test
     @DisplayName("clean data produces no findings at all")
     void cleanDataIsSilent() {
+        genders.put(1L, Gender.MALE);
         genders.put(2L, Gender.FEMALE);
+        genders.put(3L, Gender.MALE);
         union(10L, 1L, 2L, 3L);
         personEvent(1L, EventType.BIRTH, LocalDate.of(1900, 1, 1));
         personEvent(2L, EventType.BIRTH, LocalDate.of(1905, 1, 1));
@@ -524,5 +528,22 @@ class QualityServiceImplTest {
         assertThat(issues.getFirst().severity()).isEqualTo(IssueSeverity.ERROR);
         assertThat(issues).extracting(QualityIssueResponse::severity).contains(IssueSeverity.WARNING);
         assertThat(issues.getLast().severity()).isEqualTo(IssueSeverity.INFO);
+    }
+
+    @Test
+    @DisplayName("a person with no họ or no recorded sex is listed as a note, never as a warning (§6.1)")
+    void missingSurnameAndSexAreNotes() {
+        genders.put(1L, Gender.MALE);
+        genders.put(2L, Gender.UNKNOWN);
+        genders.put(3L, Gender.FEMALE);
+        when(personService.findIdsWithoutSurname()).thenReturn(new LinkedHashSet<>(List.of(3L)));
+
+        List<QualityIssueResponse> issues = quality.checkAll();
+
+        assertThat(issues)
+                .extracting(QualityIssueResponse::code, QualityIssueResponse::personId, QualityIssueResponse::severity)
+                .containsExactly(
+                        tuple(IssueCode.MISSING_SURNAME, 3L, IssueSeverity.INFO),
+                        tuple(IssueCode.MISSING_GENDER, 2L, IssueSeverity.INFO));
     }
 }

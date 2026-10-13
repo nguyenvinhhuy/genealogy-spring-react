@@ -46,7 +46,13 @@ public enum IssueCode {
     CHILD_BORN_BEFORE_MARRIAGE(IssueSeverity.INFO),
 
     // The same person recorded twice.
-    POSSIBLE_DUPLICATE(IssueSeverity.INFO);
+    POSSIBLE_DUPLICATE(IssueSeverity.INFO),
+
+    // No họ on the primary name; old records often lack one, so it is worth filling in, not wrong.
+    MISSING_SURNAME(IssueSeverity.INFO),
+
+    // Sex not recorded, which leaves "vợ/chồng" and "cha/mẹ" ambiguous wherever the person appears.
+    MISSING_GENDER(IssueSeverity.INFO);
 
     private final IssueSeverity severity;
 

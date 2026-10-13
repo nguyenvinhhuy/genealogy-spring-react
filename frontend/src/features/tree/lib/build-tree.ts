@@ -1,3 +1,4 @@
+import type { RelationType } from '@/features/family/types'
 import type { ChildEdge, PersonNode, Subgraph, UnionEdge } from '@/features/tree/types'
 
 /** One union drawn inside a person's box: the spouse, when one is recorded. */
@@ -15,6 +16,8 @@ export interface TreeNode {
   person: PersonNode
   unions: UnionSlot[]
   viaUnion: number | null
+  // How the person is linked to the box above: a con nuôi or con riêng is labelled, a con đẻ is not.
+  link: RelationType
   birthLink: boolean
   repeat: boolean
   children: TreeNode[]
@@ -72,7 +75,7 @@ export function buildDescendantTree(subgraph: Subgraph): TreeNode | null {
   const expanded = new Set<number>()
   let serial = 0
 
-  const build = (personId: number, viaUnion: number | null, birthLink: boolean): TreeNode | null => {
+  const build = (personId: number, viaUnion: number | null, link: RelationType): TreeNode | null => {
     const person = personById.get(personId)
     if (!person) {
       return null
@@ -80,11 +83,14 @@ export function buildDescendantTree(subgraph: Subgraph): TreeNode | null {
     const key = `${personId}-${serial++}`
     // A cousin marriage reaches one person by two lines; the second is drawn as a pointer, not expanded again.
     if (expanded.has(personId)) {
-      return { key, person, unions: [], viaUnion, birthLink, repeat: true, children: [] }
+      return { key, person, unions: [], viaUnion, link, birthLink: link === 'BIRTH', repeat: true, children: [] }
     }
     expanded.add(personId)
 
-    const own = [...(unionsByPartner.get(personId) ?? [])].sort((a, b) => a.orderIndex - b.orderIndex)
+    // Vợ cả first, ties by when the union was recorded: the server sends the same order, and a map need not keep it.
+    const own = [...(unionsByPartner.get(personId) ?? [])].sort(
+      (a, b) => a.orderIndex - b.orderIndex || a.familyId - b.familyId,
+    )
     const unions: UnionSlot[] = []
     const children: TreeNode[] = []
 
@@ -94,21 +100,24 @@ export function buildDescendantTree(subgraph: Subgraph): TreeNode | null {
         familyId: union.familyId,
         spouse: spouseId != null ? (personById.get(spouseId) ?? null) : null,
       })
+      // Recorded birth order first, then the unrecorded in the order they were entered, as the book prints them.
       const ordered = [...union.children].sort(
-        (a, b) => (a.birthOrder ?? Number.MAX_SAFE_INTEGER) - (b.birthOrder ?? Number.MAX_SAFE_INTEGER),
+        (a, b) =>
+          (a.birthOrder ?? Number.MAX_SAFE_INTEGER) - (b.birthOrder ?? Number.MAX_SAFE_INTEGER) ||
+          a.childId - b.childId,
       )
       for (const link of ordered) {
-        const child = build(link.childId, unionIndex, relationTo(union, link, personId) === 'BIRTH')
+        const child = build(link.childId, unionIndex, relationTo(union, link, personId))
         if (child) {
           children.push(child)
         }
       }
     })
 
-    return { key, person, unions, viaUnion, birthLink, repeat: false, children }
+    return { key, person, unions, viaUnion, link, birthLink: link === 'BIRTH', repeat: false, children }
   }
 
-  return build(subgraph.focusId, null, true)
+  return build(subgraph.focusId, null, 'BIRTH')
 }
 
 /**
@@ -123,7 +132,7 @@ export function buildAncestorTree(subgraph: Subgraph): TreeNode | null {
   const expanded = new Set<number>()
   let serial = 0
 
-  const build = (personId: number, birthLink: boolean): TreeNode | null => {
+  const build = (personId: number, link: RelationType): TreeNode | null => {
     const person = personById.get(personId)
     if (!person) {
       return null
@@ -131,16 +140,16 @@ export function buildAncestorTree(subgraph: Subgraph): TreeNode | null {
     const key = `${personId}-${serial++}`
     // Cousins who married share ancestors; the second branch still shows who, instead of just ending.
     if (expanded.has(personId)) {
-      return { key, person, unions: [], viaUnion: null, birthLink, repeat: true, children: [] }
+      return { key, person, unions: [], viaUnion: null, link, birthLink: link === 'BIRTH', repeat: true, children: [] }
     }
     expanded.add(personId)
 
     const parents: TreeNode[] = []
     for (const union of unionsByChild.get(personId) ?? []) {
-      const link = union.children.find((child) => child.childId === personId)
+      const edge = union.children.find((child) => child.childId === personId)
       for (const parentId of [union.partner1Id, union.partner2Id]) {
-        if (parentId != null && link) {
-          const parent = build(parentId, relationTo(union, link, parentId) === 'BIRTH')
+        if (parentId != null && edge) {
+          const parent = build(parentId, relationTo(union, edge, parentId))
           if (parent) {
             parents.push(parent)
           }
@@ -148,8 +157,17 @@ export function buildAncestorTree(subgraph: Subgraph): TreeNode | null {
       }
     }
 
-    return { key, person, unions: [], viaUnion: null, birthLink, repeat: false, children: parents }
+    return {
+      key,
+      person,
+      unions: [],
+      viaUnion: null,
+      link,
+      birthLink: link === 'BIRTH',
+      repeat: false,
+      children: parents,
+    }
   }
 
-  return build(subgraph.focusId, true)
+  return build(subgraph.focusId, 'BIRTH')
 }

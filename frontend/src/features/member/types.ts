@@ -24,6 +24,7 @@ export interface CreateMemberRequest {
 /** The clan head renaming an account, changing its role, or disabling it. */
 export interface UpdateMemberRequest {
   fullName: string
+  email: string
   role: Role
   active: boolean
   changeNote: string | null

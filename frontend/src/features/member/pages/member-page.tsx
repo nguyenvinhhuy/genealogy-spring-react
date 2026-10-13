@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { fetchMembers, MEMBER_QUERY_KEY } from '@/features/member/api'
 import { CreateMemberDialog } from '@/features/member/components/create-member-dialog'
+import { DeleteMemberDialog } from '@/features/member/components/delete-member-dialog'
 import { EditMemberDialog } from '@/features/member/components/edit-member-dialog'
 import { ResetPasswordDialog } from '@/features/member/components/reset-password-dialog'
 import { PageContainer, PageHeader } from '@/shared/components/page-header'
@@ -14,7 +15,7 @@ import { Badge } from '@/shared/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table'
 
 /**
- * Lists every account for the clan head, who opens, edits, disables and resets them here.
+ * Lists every account for the clan head, who opens, edits, disables, deletes and resets them here.
  *
  * @returns the page element
  */
@@ -74,6 +75,8 @@ export function MemberPage() {
                       <EditMemberDialog member={member} isSelf={member.id === ownId} />
                       {/* One's own is "Đổi mật khẩu", which asks for the current one; the server refuses this. */}
                       {member.id !== ownId && <ResetPasswordDialog member={member} />}
+                      {/* Never one's own: the server refuses it, as the clan could be left with no trưởng tộc. */}
+                      {member.id !== ownId && <DeleteMemberDialog member={member} />}
                     </div>
                   </TableCell>
                 </TableRow>

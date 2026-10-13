@@ -6,6 +6,8 @@ import com.genealogy.member.domain.Member;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -32,6 +34,14 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
     boolean existsByEmail(String email);
 
     /**
+     * Lists the accounts that have not been deleted.
+     *
+     * @param pageable the page to return
+     * @return one page of accounts
+     */
+    Page<Member> findByDeletedAtIsNull(Pageable pageable);
+
+    /**
      * Reads only what the request filter checks about an account.
      *
      * @param id the member id
@@ -46,11 +56,10 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
      * Raises an account's credential version, which makes every access token issued before it stop working.
      *
      * @param id the member id
-     * @return how many rows changed
      */
     @Modifying
     @Query("UPDATE Member m SET m.credentialVersion = m.credentialVersion + 1 WHERE m.id = :id")
-    int bumpCredentialVersion(@Param("id") Long id);
+    void bumpCredentialVersion(@Param("id") Long id);
 
     /**
      * Loads the enabled accounts holding a role and locks their rows until the transaction ends.

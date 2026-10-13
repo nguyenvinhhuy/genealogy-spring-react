@@ -4,7 +4,9 @@ import com.genealogy.book.service.BookService;
 import com.genealogy.common.exception.NotFoundException;
 import com.genealogy.common.model.EventSubjectType;
 import com.genealogy.common.model.EventType;
+import com.genealogy.common.model.Gender;
 import com.genealogy.common.model.GraveKind;
+import com.genealogy.common.model.RelationType;
 import com.genealogy.common.model.SourceType;
 import com.genealogy.common.util.VietnamTime;
 import com.genealogy.event.dto.response.EventResponse;
@@ -40,6 +42,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -114,6 +117,8 @@ public class BookServiceImpl implements BookService {
 
         Map<Long, PersonDetailResponse> personById =
                 everyone.stream().collect(Collectors.toMap(PersonDetailResponse::id, person -> person));
+        Set<Long> lineRoots = rootPersonId == null ? familyService.findClanMemberIds() : Set.of(rootPersonId);
+        Layout layout = layout(people, unions, unionsByPartner, lineRoots, personById);
         Map<Long, List<EventResponse>> eventsByPerson = events.stream()
                 .filter(event -> event.subjectType() == EventSubjectType.PERSON)
                 .collect(Collectors.groupingBy(EventResponse::subjectId));
@@ -128,7 +133,7 @@ public class BookServiceImpl implements BookService {
             titlePage(document, bold, regular, rootPersonId == null ? null : personById.get(rootPersonId));
             Entries entries = new Entries(
                     unionsByPartner, personById, eventsByPerson, mediaService.findPortraitKeys(), placePathById,
-                    graveByPerson);
+                    graveByPerson, layout);
             generations(document, bold, people, entries);
             sources(document, bold, sourceService.findAllSources());
         }
@@ -144,6 +149,7 @@ public class BookServiceImpl implements BookService {
      * @param portraitKeys the storage key of each person's portrait, by person id
      * @param placePathById each place's full path, most specific first, by id
      * @param graveByPerson each person's grave, by person id
+     * @param layout who heads each union, who has an entry of their own, and in what order
      */
     private record Entries(
             Map<Long, List<UnionEdgeResponse>> unionsByPartner,
@@ -151,7 +157,18 @@ public class BookServiceImpl implements BookService {
             Map<Long, List<EventResponse>> eventsByPerson,
             Map<Long, String> portraitKeys,
             Map<Long, String> placePathById,
-            Map<Long, GraveResponse> graveByPerson) {
+            Map<Long, GraveResponse> graveByPerson,
+            Layout layout) {
+    }
+
+    /**
+     * How the book groups people into families.
+     *
+     * @param headByUnion the partner each union is printed under, by family id
+     * @param withEntry the people with an entry of their own; everyone else appears only inside a couple
+     * @param rank each person's place in the book: the line walked parent to child, in sibling order
+     */
+    private record Layout(Map<Long, Long> headByUnion, Set<Long> withEntry, Map<Long, Integer> rank) {
     }
 
     /**
@@ -236,8 +253,14 @@ public class BookServiceImpl implements BookService {
         Map<Integer, List<PersonDetailResponse>> byGeneration =
                 new TreeMap<>(Comparator.nullsLast(Comparator.naturalOrder()));
         for (PersonDetailResponse person : people) {
-            byGeneration.computeIfAbsent(person.generation(), key -> new ArrayList<>()).add(person);
+            if (entries.layout().withEntry().contains(person.id())) {
+                byGeneration.computeIfAbsent(person.generation(), key -> new ArrayList<>()).add(person);
+            }
         }
+        // Siblings in birth order and each family after the one before it, not in the order they were typed in.
+        Comparator<PersonDetailResponse> byRank = Comparator.comparing(
+                person -> entries.layout().rank().getOrDefault(person.id(), Integer.MAX_VALUE));
+        byGeneration.values().forEach(list -> list.sort(byRank.thenComparing(PersonDetailResponse::id)));
 
         for (Map.Entry<Integer, List<PersonDetailResponse>> entry : byGeneration.entrySet()) {
             document.add(new Paragraph(entry.getKey() == null ? "CHƯA RÕ ĐỜI" : "ĐỜI THỨ " + entry.getKey())
@@ -252,7 +275,7 @@ public class BookServiceImpl implements BookService {
     }
 
     /**
-     * Writes one person's entry: their names, dates and places, grave, spouses and children.
+     * Writes one person's entry: their own details, then each marriage as a couple with its children beneath.
      *
      * @param document the document being built
      * @param bold the heading font
@@ -267,25 +290,144 @@ public class BookServiceImpl implements BookService {
                 .setMarginBottom(2));
 
         portrait(person.id(), entries.portraitKeys()).ifPresent(document::add);
-        alternateNames(person).ifPresent(text -> document.add(line(text)));
-        dates(person, entries.eventsByPerson(), entries.placePathById()).forEach(text -> document.add(line(text)));
-        grave(entries.graveByPerson().get(person.id()), entries.placePathById())
-                .ifPresent(text -> document.add(line(text)));
+        details(person, entries).forEach(text -> document.add(line(text)));
 
-        for (UnionEdgeResponse union : entries.unionsByPartner().getOrDefault(person.id(), List.of())) {
-            Long spouseId = person.id().equals(union.partner1Id()) ? union.partner2Id() : union.partner1Id();
-            document.add(line("Vợ/chồng: " + nameOf(spouseId, entries.personById())));
-            if (!union.children().isEmpty()) {
-                document.add(line("Con: "
-                        + union.children().stream()
-                                .map(child -> nameOf(child.childId(), entries.personById()))
-                                .collect(Collectors.joining(", "))));
+        Map<Long, Long> headByUnion = entries.layout().headByUnion();
+        List<UnionEdgeResponse> unions = entries.unionsByPartner().getOrDefault(person.id(), List.of());
+        List<UnionEdgeResponse> headed = unions.stream()
+                .filter(union -> person.id().equals(headByUnion.get(union.familyId())))
+                .toList();
+        for (int index = 0; index < headed.size(); index++) {
+            String number = headed.size() > 1 ? (index + 1) + ". " : "";
+            couple(document, bold, person, headed.get(index), number, entries);
+        }
+        // A marriage printed under the other partner, who has an entry too: a pointer, so the children print once.
+        for (UnionEdgeResponse union : unions) {
+            PersonDetailResponse head = entries.personById().get(headByUnion.get(union.familyId()));
+            if (!headed.contains(union) && head != null) {
+                document.add(line(spouseLabel(head.gender()) + ": " + head.displayName() + seeGeneration(head)));
+            }
+        }
+    }
+
+    /**
+     * Writes one marriage under the partner it is printed with: the couple, the other partner, and their children.
+     *
+     * @param document the document being built
+     * @param bold the font the couple line is set in
+     * @param head the partner whose entry this is
+     * @param union the marriage
+     * @param number "1. ", "2. " when the head married more than once, or empty
+     * @param entries every lookup a person's entry reads
+     */
+    private void couple(
+            Document document,
+            PdfFont bold,
+            PersonDetailResponse head,
+            UnionEdgeResponse union,
+            String number,
+            Entries entries) {
+        Long spouseId = head.id().equals(union.partner1Id()) ? union.partner2Id() : union.partner1Id();
+        PersonDetailResponse spouse = spouseId == null ? null : entries.personById().get(spouseId);
+        document.add(line(number + coupleTitle(head, spouse)).setFont(bold).setMarginTop(4));
+
+        if (spouse != null && entries.layout().withEntry().contains(spouse.id())) {
+            document.add(line(spouseLabel(spouse.gender()) + ": " + spouse.displayName() + seeGeneration(spouse)));
+        } else if (spouse != null) {
+            // A con dâu or con rể has no entry of their own, so whatever is known of them prints with the couple.
+            List<String> known = details(spouse, entries);
+            if (!known.isEmpty()) {
+                document.add(line(spouseLabel(spouse.gender()) + " " + spouse.displayName() + ": "
+                        + String.join("; ", known)));
             }
         }
 
-        if (person.notes() != null && !person.notes().isBlank()) {
-            document.add(line("Ghi chú: " + person.notes().strip()));
+        if (!union.children().isEmpty()) {
+            boolean headIsPartner1 = head.id().equals(union.partner1Id());
+            document.add(line("Con: " + union.children().stream()
+                    .map(child -> childText(child, headIsPartner1, entries.personById()))
+                    .collect(Collectors.joining(", "))));
         }
+    }
+
+    /**
+     * Lists what is known of one person: other names, life dates and places, grave and notes.
+     *
+     * @param person the person
+     * @param entries every lookup a person's entry reads
+     * @return the lines, in the order they print
+     */
+    private static List<String> details(PersonDetailResponse person, Entries entries) {
+        List<String> lines = new ArrayList<>();
+        alternateNames(person).ifPresent(lines::add);
+        lines.addAll(dates(person, entries.eventsByPerson(), entries.placePathById()));
+        grave(entries.graveByPerson().get(person.id()), entries.placePathById()).ifPresent(lines::add);
+        if (person.notes() != null && !person.notes().isBlank()) {
+            lines.add("Ghi chú: " + person.notes().strip());
+        }
+        return lines;
+    }
+
+    /**
+     * Names a couple, the husband first when the records say which partner is the husband.
+     *
+     * @param head the partner whose entry this is
+     * @param spouse the other partner, or null when unrecorded
+     * @return "chồng – vợ", or the head with the other partner marked unknown
+     */
+    private static String coupleTitle(PersonDetailResponse head, PersonDetailResponse spouse) {
+        if (spouse == null) {
+            return head.displayName() + " – chưa rõ vợ/chồng";
+        }
+        // An unrecorded sex is never read as male (§5.3), so only a recorded husband is moved to the front.
+        boolean spouseFirst = spouse.gender() == Gender.MALE && head.gender() != Gender.MALE;
+        return spouseFirst
+                ? spouse.displayName() + " – " + head.displayName()
+                : head.displayName() + " – " + spouse.displayName();
+    }
+
+    /**
+     * Names the part a partner plays in a marriage, from their recorded sex.
+     *
+     * @param gender the partner's recorded sex
+     * @return "Chồng", "Vợ", or "Vợ/chồng" when the sex is unrecorded
+     */
+    private static String spouseLabel(Gender gender) {
+        return switch (gender) {
+            case MALE -> "Chồng";
+            case FEMALE -> "Vợ";
+            case UNKNOWN -> "Vợ/chồng";
+        };
+    }
+
+    /**
+     * Points a reader at the đời another entry is printed under.
+     *
+     * @param person the person with an entry of their own
+     * @return " (xem đời N)", or empty when their đời is unknown
+     */
+    private static String seeGeneration(PersonDetailResponse person) {
+        return person.generation() == null ? "" : " (xem đời " + person.generation() + ")";
+    }
+
+    /**
+     * Names one child, marking a link to the head that is not by birth.
+     *
+     * @param child the child link
+     * @param headIsPartner1 whether the entry's head is the union's first partner
+     * @param personById every person by id
+     * @return the child's name, with "con nuôi", "con riêng" or "con nuôi dưỡng" when so recorded
+     */
+    private static String childText(
+            ChildEdgeResponse child, boolean headIsPartner1, Map<Long, PersonDetailResponse> personById) {
+        RelationType relation = headIsPartner1 ? child.relationToP1() : child.relationToP2();
+        String name = nameOf(child.childId(), personById);
+        return switch (relation) {
+            case BIRTH -> name;
+            case ADOPTED -> name + " (con nuôi)";
+            case STEP -> name + " (con riêng)";
+            case FOSTER -> name + " (con nuôi dưỡng)";
+        };
     }
 
     /**
@@ -390,11 +532,146 @@ public class BookServiceImpl implements BookService {
     }
 
     /**
+     * Decides who heads each union, who gets an entry of their own, and the order entries print in.
+     *
+     * @param people the people the book covers
+     * @param unions every union, vợ cả first
+     * @param unionsByPartner every union, grouped by each partner
+     * @param lineRoots where the line starts: the clan's blood line, or the person a chi is rooted at
+     * @param personById every person by id
+     * @return the layout
+     */
+    private static Layout layout(
+            List<PersonDetailResponse> people,
+            List<UnionEdgeResponse> unions,
+            Map<Long, List<UnionEdgeResponse>> unionsByPartner,
+            Set<Long> lineRoots,
+            Map<Long, PersonDetailResponse> personById) {
+
+        Set<Long> covered = people.stream().map(PersonDetailResponse::id).collect(Collectors.toSet());
+        // The line is everyone below its roots by any link: a con nuôi prints as a child, not as somebody's spouse.
+        Set<Long> line = new HashSet<>();
+        Deque<Long> queue = new ArrayDeque<>();
+        for (Long root : lineRoots.stream().filter(covered::contains).sorted().toList()) {
+            line.add(root);
+            queue.add(root);
+        }
+        while (!queue.isEmpty()) {
+            for (UnionEdgeResponse union : unionsByPartner.getOrDefault(queue.removeFirst(), List.of())) {
+                for (ChildEdgeResponse child : union.children()) {
+                    if (covered.contains(child.childId()) && line.add(child.childId())) {
+                        queue.addLast(child.childId());
+                    }
+                }
+            }
+        }
+
+        Map<Long, Long> headByUnion = new HashMap<>();
+        for (UnionEdgeResponse union : unions) {
+            Long head = headOf(union, line, personById);
+            if (head != null) {
+                headByUnion.put(union.familyId(), head);
+            }
+        }
+        // Someone who only ever married into the line has no entry: they print once, with the couple.
+        Set<Long> withEntry = new HashSet<>();
+        for (PersonDetailResponse person : people) {
+            List<UnionEdgeResponse> own = unionsByPartner.getOrDefault(person.id(), List.of());
+            boolean headsAny = own.stream().anyMatch(union -> person.id().equals(headByUnion.get(union.familyId())));
+            if (line.contains(person.id()) || own.isEmpty() || headsAny) {
+                withEntry.add(person.id());
+            }
+        }
+
+        // The walk starts at the top of the line: started at a child, that child would jump ahead of an elder sibling.
+        Set<Long> belowSomeone = new HashSet<>();
+        for (UnionEdgeResponse union : unions) {
+            if (line.contains(union.partner1Id()) || line.contains(union.partner2Id())) {
+                union.children().forEach(child -> belowSomeone.add(child.childId()));
+            }
+        }
+        Map<Long, Integer> rank = new HashMap<>();
+        List<Long> starts = new ArrayList<>(line.stream().filter(id -> !belowSomeone.contains(id)).sorted().toList());
+        people.stream().map(PersonDetailResponse::id).sorted().forEach(starts::add);
+        for (Long start : starts) {
+            rankFrom(start, unionsByPartner, headByUnion, rank);
+        }
+        return new Layout(headByUnion, withEntry, rank);
+    }
+
+    /**
+     * Numbers a person and then, depth first, the children of every union they head, eldest first.
+     *
+     * @param personId the person to start from
+     * @param unionsByPartner every union, grouped by each partner
+     * @param headByUnion the partner each union is printed under
+     * @param rank the numbering so far, extended in place
+     */
+    private static void rankFrom(
+            Long personId,
+            Map<Long, List<UnionEdgeResponse>> unionsByPartner,
+            Map<Long, Long> headByUnion,
+            Map<Long, Integer> rank) {
+        Deque<Long> stack = new ArrayDeque<>(List.of(personId));
+        while (!stack.isEmpty()) {
+            Long current = stack.removeFirst();
+            if (rank.putIfAbsent(current, rank.size()) != null) {
+                continue;
+            }
+            List<Long> children = new ArrayList<>();
+            for (UnionEdgeResponse union : unionsByPartner.getOrDefault(current, List.of())) {
+                if (current.equals(headByUnion.get(union.familyId()))) {
+                    union.children().forEach(child -> children.add(child.childId()));
+                }
+            }
+            // Pushed youngest first onto the front, so the eldest is taken next and the walk stays depth first.
+            for (int index = children.size() - 1; index >= 0; index--) {
+                stack.addFirst(children.get(index));
+            }
+        }
+    }
+
+    /**
+     * Picks the partner a union is printed under.
+     *
+     * @param union the union
+     * @param line the people of the line the book follows
+     * @param personById every person by id
+     * @return the partner in the line; with both or neither in it, a recorded husband, else the first partner
+     */
+    private static Long headOf(UnionEdgeResponse union, Set<Long> line, Map<Long, PersonDetailResponse> personById) {
+        Long first = union.partner1Id();
+        Long second = union.partner2Id();
+        if (first == null || second == null) {
+            return first == null ? second : first;
+        }
+        boolean firstInLine = line.contains(first);
+        if (firstInLine != line.contains(second)) {
+            return firstInLine ? first : second;
+        }
+        // A cousin marriage, or a couple outside the line: never guessing a sex (§5.3), only a recorded husband moves.
+        boolean secondIsHusband =
+                genderOf(second, personById) == Gender.MALE && genderOf(first, personById) != Gender.MALE;
+        return secondIsHusband ? second : first;
+    }
+
+    /**
+     * Reads a person's recorded sex.
+     *
+     * @param id the person id
+     * @param personById every person by id
+     * @return their sex, or unknown when they are not on record
+     */
+    private static Gender genderOf(Long id, Map<Long, PersonDetailResponse> personById) {
+        PersonDetailResponse person = personById.get(id);
+        return person == null ? Gender.UNKNOWN : person.gender();
+    }
+
+    /**
      * Walks down from one person to every descendant and the spouse each of them married in.
      *
      * @param rootPersonId the person to start from
      * @param everyone every person in the clan
-     * @param unions every union
      * @param unionsByPartner every union, grouped by each partner
      * @return the people in that chi, in the order the whole-clan list had them
      */

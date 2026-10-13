@@ -5,6 +5,7 @@ import com.genealogy.common.exception.ProblemMessages;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -30,8 +31,8 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
      * @throws IOException if the response cannot be written
      */
     @Override
-    public void commence(HttpServletRequest request, HttpServletResponse response,
-            AuthenticationException authException) throws IOException {
+    public void commence(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
+            @NonNull AuthenticationException authException) throws IOException {
         // A rejection here never reaches GlobalExceptionHandler, so the ProblemDetail is built inline (CLAUDE.md 4.1).
         ProblemDetail problem =
                 ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ProblemMessages.UNAUTHORIZED);
